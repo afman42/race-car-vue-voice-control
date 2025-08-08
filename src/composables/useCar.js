@@ -3,7 +3,7 @@
 import { ref, computed, watch } from "vue";
 import { CAR_SETTINGS } from "@/config";
 import audioService from "@/services/audioService";
-
+import ttsService from "@/services/textToSpeechService";
 // --- SHARED STATE (SINGLETON PATTERN) ---
 // By defining state outside the function, every component that calls useCar()
 // will share this same reactive state.
@@ -46,25 +46,37 @@ export function useCar() {
   };
 
   // --- ACTIONS (PUBLIC METHODS) ---
-  const startEngine = () => {
-    if (engineStatus.value)
-      return { success: false, message: "The engine is already running." };
+  const startEngine = async () => {
+    if (engineStatus.value) {
+      const message = "The engine is already running.";
+      await ttsService.speak(message);
+      return message;
+    }
 
     engineStatus.value = true;
     rpm.value = CAR_SETTINGS.RPM_IDLE;
-    audioService.playSound("engineStart");
-    return { success: true, message: "Engine started." };
+
+    const message = "Engine started.";
+    await audioService.playSound("engineStart");
+    await ttsService.speak(message); // Speak AFTER sound
+    return message;
   };
 
-  const stopEngine = () => {
-    if (!engineStatus.value)
-      return { success: false, message: "The engine is already off." };
+  const stopEngine = async () => {
+    if (!engineStatus.value) {
+      const message = "The engine is already off.";
+      await ttsService.speak(message);
+      return message;
+    }
 
     engineStatus.value = false;
     rpm.value = 0;
     drsStatus.value = false;
-    audioService.playSound("engineStop");
-    return { success: true, message: "Engine stopped." };
+
+    const message = "Engine stopped.";
+    await audioService.playSound("engineStop");
+    await ttsService.speak(message);
+    return message;
   };
 
   const activateDrs = () => {
@@ -81,43 +93,53 @@ export function useCar() {
     return { success: true, message: "DRS enabled." };
   };
 
-  const activateOvertake = () => {
-    if (overtakeActive.value)
-      return { success: false, message: "Overtake is already active." };
-    if (!engineStatus.value)
-      return {
-        success: false,
-        message: "Cannot activate overtake, engine is off.",
-      };
-    if (batteryLevel.value < CAR_SETTINGS.OVERTAKE_BATTERY_COST)
-      return { success: false, message: "Not enough battery for overtake." };
+  const activateOvertake = async () => {
+    let message = "";
+    if (overtakeActive.value) message = "Overtake is already active.";
+    else if (!engineStatus.value)
+      message = "Cannot activate overtake, engine is off.";
+    else if (batteryLevel.value < CAR_SETTINGS.OVERTAKE_BATTERY_COST)
+      message = "Not enough battery for overtake.";
+
+    if (message) {
+      await ttsService.speak(message);
+      return message;
+    }
 
     overtakeActive.value = true;
     batteryLevel.value -= CAR_SETTINGS.OVERTAKE_BATTERY_COST;
     rpm.value += CAR_SETTINGS.RPM_OVERTAKE_BOOST;
-    audioService.playSound("overtakeOn");
+    message = "Overtake mode activated.";
 
-    setTimeout(() => {
+    await audioService.playSound("overtakeOn");
+    await ttsService.speak(message);
+
+    setTimeout(async () => {
       overtakeActive.value = false;
       rpm.value = engineStatus.value ? CAR_SETTINGS.RPM_IDLE : 0;
+      await ttsService.speak("Overtake finished.");
     }, CAR_SETTINGS.OVERTAKE_DURATION_MS);
 
-    return { success: true, message: "Overtake mode activated." };
+    return message;
   };
 
-  const checkTireStatus = () => {
+  const checkTireStatus = async () => {
+    let message = "";
     if (!engineStatus.value) {
       tireStatus.value = "Cold";
-      return "Tires are cold.";
+      message = "Tires are cold.";
+    } else {
+      tireStatus.value = "Optimal";
+      message = "Tires are in the optimal window.";
     }
-    tireStatus.value = "Optimal";
-    return "Tires are in the optimal window.";
+    await ttsService.speak(message);
+    return message;
   };
 
-  const getFuelStatus = () => {
-    if (isLowFuel.value)
-      return `Fuel is critical, only ${fuelLevel.value} percent remaining!`;
-    return `Fuel level is at ${fuelLevel.value} percent.`;
+  const getFuelStatus = async () => {
+    const message = `Fuel level is at ${fuelLevel.value} percent.`;
+    await ttsService.speak(message);
+    return message;
   };
 
   const getBatteryStatus = () => {

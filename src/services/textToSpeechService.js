@@ -2,45 +2,39 @@
 
 const synth = window.speechSynthesis;
 
-let voices = [];
-
-function populateVoiceList() {
-  if (typeof synth === "undefined") {
-    return;
-  }
-  voices = synth.getVoices();
-}
-
-populateVoiceList();
-if (speechSynthesis.onvoiceschanged !== undefined) {
-  speechSynthesis.onvoiceschanged = populateVoiceList;
-}
-
 export default {
   speak(textToSpeak) {
-    if (synth.speaking) {
-      console.error("SpeechSynthesis.speaking");
-      return;
-    }
-    if (textToSpeak === "") {
-      return;
-    }
+    return new Promise((resolve, reject) => {
+      if (synth.speaking) {
+        // Don't interrupt, just resolve immediately or reject.
+        // For this app, we can just let it finish.
+        console.warn('SpeechSynthesis is already speaking.');
+        resolve(); 
+        return;
+      }
+      if (!textToSpeak) {
+        resolve();
+        return;
+      }
 
-    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      
+      utterance.onend = () => {
+        resolve(); // Resolve the promise when speaking is finished
+      };
 
-    utterance.onerror = (event) => {
-      console.error("SpeechSynthesisUtterance.onerror", event);
-    };
+      utterance.onerror = (event) => {
+        console.error('SpeechSynthesisUtterance.onerror', event);
+        reject(event); // Reject on error
+      };
+      
+      // Optional voice configuration
+      const desiredVoice = synth.getVoices().find(voice => voice.name.includes('Google UK English Male')) || synth.getVoices()[0];
+      utterance.voice = desiredVoice;
+      utterance.pitch = 1;
+      utterance.rate = 1.1;
 
-    // Optional: Configure the voice
-    // You can find a "Google UK English Male" or similar voice for a co-pilot feel
-    const desiredVoice =
-      voices.find((voice) => voice.name.includes("Google UK English Male")) ||
-      voices[0];
-    utterance.voice = desiredVoice;
-    utterance.pitch = 1; // 0 to 2
-    utterance.rate = 1.1; // 0.1 to 10
-
-    synth.speak(utterance);
+      synth.speak(utterance);
+    });
   },
 };
