@@ -20,10 +20,12 @@
         <path
           class="gauge-needle"
           d="M10 50 A 40 40 0 0 1 90 50"
-          :style="{ strokeDashoffset: rpmNeedleOffset }"
+          ref="gaugeNeedlePath"
+          :style="{
+            strokeDasharray: gaugeCircumference,
+            strokeDashoffset: rpmNeedleOffset,
+          }"
         ></path>
-        <text x="50" y="45" class="rpm-text">{{ rpm.toFixed(0) }}</text>
-        <text x="50" y="55" class="rpm-label">RPM</text>
       </svg>
     </div>
 
@@ -72,16 +74,29 @@ const rpm = ref(0);
 const maxRpm = 8000;
 const gaugeCircumference = 125.6;
 
-// --- Computed Properties (remain the same) ---
+// -- NEW DYNAMIC GAUGE LOGIC --
+// Create a ref to hold our SVG path element
+const gaugeNeedlePath = ref(null);
+// Create a ref for the circumference, default to 0
+const gaugeCircumference = ref(0);
+
+// --- Computed Properties ---
 const rpmNeedleOffset = computed(() => {
+  if (gaugeCircumference.value === 0) return 0; // Avoid division by zero before mounted
   const rpmPercentage = rpm.value / maxRpm;
-  return gaugeCircumference * (1 - rpmPercentage);
+  // The calculation remains the same, but now uses the dynamic circumference
+  return gaugeCircumference.value * (1 - rpmPercentage);
 });
 
 // --- Lifecycle Hooks ---
 // NEW: Load sounds when the component is mounted
 onMounted(() => {
   audioService.loadSounds();
+  if (gaugeNeedlePath.value) {
+    const length = gaugeNeedlePath.value.getTotalLength();
+    console.log("Measured Gauge Path Length:", length); // You'll see the exact value!
+    gaugeCircumference.value = length;
+  }
 });
 
 onUnmounted(() => {
@@ -376,8 +391,9 @@ h1 {
 }
 .gauge-needle {
   stroke: #00ffff;
-  stroke-dasharray: 125.6;
-  stroke-dashoffset: 125.6;
+  /* REMOVE these two lines from the CSS */
+  /* stroke-dasharray: 125.6; */
+  /* stroke-dashoffset: 125.6; */
   transition: stroke-dashoffset 0.8s cubic-bezier(0.6, 0, 0.2, 1);
 }
 .rpm-text,
