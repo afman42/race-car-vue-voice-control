@@ -1,52 +1,67 @@
 // src/services/speechRecognitionService.js
 
-// Handle browser prefixes
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const SpeechRecognition =
+  window.SpeechRecognition || window.webkitSpeechRecognition;
 const recognition = new SpeechRecognition();
 
+// This flag will help us determine if the user stopped it intentionally
+let isManuallyStopped = false;
+
 // Recognition settings
-recognition.continuous = true; // Keep listening even after a result
-recognition.lang = 'en-US';    // Set language
-recognition.interimResults = false; // We only want final results
+recognition.continuous = true;
+recognition.lang = "en-US";
+recognition.interimResults = false;
 
 export default {
   startListening(onResultCallback, onErrorCallback) {
-    if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
-      onErrorCallback(new Error("Speech recognition not supported in this browser."));
+    if (
+      !("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
+    ) {
+      onErrorCallback(new Error("Speech recognition not supported."));
       return;
     }
 
-    // Fired when speech is recognized
+    // Set our flag to false when starting
+    isManuallyStopped = false;
+
     recognition.onresult = (event) => {
       const last = event.results.length - 1;
       const transcript = event.results[last][0].transcript.trim().toLowerCase();
-      console.log('Transcript:', transcript);
       onResultCallback(transcript);
     };
 
-    // Fired on error
     recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
+      console.error("Speech recognition error:", event.error);
       if (onErrorCallback) {
         onErrorCallback(event.error);
       }
     };
-    
-    // Fired when listening ends
+
+    // *** THE KEY CHANGE IS HERE ***
+    // Fired when the service stops for any reason.
     recognition.onend = () => {
-        console.log('Speech recognition service stopped.');
+      // If it wasn't stopped by the user, restart it automatically.
+      if (!isManuallyStopped) {
+        console.log("Recognition service ended, restarting...");
+        // We add a tiny delay to avoid overwhelming the browser
+        setTimeout(() => recognition.start(), 100);
+      } else {
+        console.log("Recognition service stopped by user.");
+      }
     };
 
     try {
-        recognition.start();
-        console.log('Speech recognition service started.');
-    } catch(e) {
-        console.error("Could not start recognition", e);
-        onErrorCallback(e);
+      recognition.start();
+      console.log("Speech recognition service started.");
+    } catch (e) {
+      console.error("Could not start recognition", e);
+      onErrorCallback(e);
     }
   },
 
   stopListening() {
+    // Set our flag to true when the user clicks the stop button
+    isManuallyStopped = true;
     recognition.stop();
   },
 };
