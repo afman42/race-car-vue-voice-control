@@ -54,54 +54,62 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue"; // Make sure onMounted is imported
 import speechService from "@/services/speechRecognitionService";
-// NEW: Import the TTS service
 import ttsService from "@/services/textToSpeechService";
+// NEW: Import the audio service
+import audioService from "@/services/audioService";
 
-// --- State Variables ---
+// --- State Variables (remain the same) ---
 const isListening = ref(false);
 const statusMessage = ref('Click "Start Listening" to begin');
 const lastTranscript = ref("...");
-
-// Dashboard states
 const engineStatus = ref(false);
 const drsStatus = ref(false);
 const tireStatus = ref("Cold");
-const isSpeaking = ref(false); // To disable button while TTS is active
-
-// NEW: RPM Gauge State
+const isSpeaking = ref(false);
 const rpm = ref(0);
 const maxRpm = 8000;
-const gaugeCircumference = 125.6; // Circumference of the semi-circle path
+const gaugeCircumference = 125.6;
 
-// --- Computed Properties ---
-// NEW: Computed property for the SVG needle animation
+// --- Computed Properties (remain the same) ---
 const rpmNeedleOffset = computed(() => {
   const rpmPercentage = rpm.value / maxRpm;
   return gaugeCircumference * (1 - rpmPercentage);
 });
 
-// --- Core Logic ---
+// --- Lifecycle Hooks ---
+// NEW: Load sounds when the component is mounted
+onMounted(() => {
+  audioService.loadSounds();
+});
 
+onUnmounted(() => {
+  speechService.stopListening();
+  window.speechSynthesis.cancel();
+});
+
+// --- Core Logic ---
 const speakAndSetStatus = (text) => {
+  // This function remains the same
   statusMessage.value = text;
   isSpeaking.value = true;
   ttsService.speak(text);
-  // A simple way to re-enable the button after speech
   setTimeout(() => {
     isSpeaking.value = false;
   }, 2000);
 };
 
+// ENHANCED: processCommand function now plays audio
 const processCommand = (transcript) => {
   lastTranscript.value = transcript;
   let response = "Unknown command.";
 
   if (transcript.includes("start engine")) {
     engineStatus.value = true;
-    rpm.value = 750; // Idle RPM
+    rpm.value = 750;
     response = "Engine started.";
+    audioService.playSound("engineStart"); // Play sound
   } else if (
     transcript.includes("stop engine") ||
     transcript.includes("shut down")
@@ -109,35 +117,40 @@ const processCommand = (transcript) => {
     engineStatus.value = false;
     rpm.value = 0;
     response = "Engine stopped.";
+    audioService.playSound("engineStop"); // Play sound
   } else if (
     transcript.includes("activate drs") ||
     transcript.includes("enable drs")
   ) {
     drsStatus.value = true;
     response = "DRS enabled.";
+    audioService.playSound("drsOn"); // Play sound
   } else if (
     transcript.includes("deactivate drs") ||
     transcript.includes("disable drs")
   ) {
     drsStatus.value = false;
     response = "DRS disabled.";
+    audioService.playSound("drsOff"); // Play sound
   } else if (
     transcript.includes("check tires") ||
     transcript.includes("tire status")
   ) {
     tireStatus.value = "Optimal Temp";
     response = "Tires are at optimal temperature.";
+    // No sound needed for this one, but you could add a "computer beep"
   } else if (transcript.includes("pit stop")) {
     tireStatus.value = "New Set";
     drsStatus.value = false;
-    rpm.value = 750; // Engine stays on in pit
+    rpm.value = 750;
     response = "Pit stop confirmed. New tires fitted.";
+    // Could add a sound of an impact wrench here!
   }
 
   speakAndSetStatus(response);
 };
 
-// ENHANCED: Error Handling
+// The rest of the functions (handleError, toggleListening) remain the same.
 const handleError = (error) => {
   let errorMessage = "An unknown error occurred.";
   switch (error) {
@@ -154,7 +167,7 @@ const handleError = (error) => {
       break;
   }
   isListening.value = false;
-  rpm.value = 0; // Reset visuals on error
+  rpm.value = 0;
   engineStatus.value = false;
   speakAndSetStatus(errorMessage);
 };
@@ -170,32 +183,127 @@ const toggleListening = () => {
     statusMessage.value = "Listening... Speak a command!";
   }
 };
-
-onUnmounted(() => {
-  speechService.stopListening();
-  window.speechSynthesis.cancel(); // Stop any speech on exit
-});
 </script>
 
 <style scoped>
-/* Previous styles remain the same... */
+/* =============================================== */
+/* 1. Base Styles (Mobile-First) 📱              */
+/* =============================================== */
 .race-control-panel {
   font-family: "Orbitron", sans-serif;
   background-color: #1e1e1e;
   color: #e0e0e0;
-  padding: 2rem;
+  margin: 1rem auto; /* Use margin for spacing */
+  padding: 1.5rem; /* Reduced padding for small screens */
   border-radius: 15px;
-  max-width: 600px;
-  margin: 2rem auto;
   border: 2px solid #444;
   box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+  width: 90%; /* Fluid width */
+  max-width: 500px; /* Max width for larger phones */
+  box-sizing: border-box; /* Ensures padding is included in width */
 }
+
 h1 {
   color: #00ffff;
   text-align: center;
-  margin-bottom: 1.5rem;
   text-transform: uppercase;
+  font-size: 1.5rem; /* Smaller font size for mobile */
+  margin-bottom: 1.5rem;
 }
+
+.status-text {
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.control-button {
+  width: 100%;
+  padding: 12px;
+  font-size: 1rem;
+  /* ... other button styles remain the same */
+  display: block;
+  color: #1e1e1e;
+  background-color: #00ffff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 2rem;
+  transition:
+    background-color 0.3s,
+    box-shadow 0.3s;
+}
+
+/* The dashboard grid is already nicely responsive! */
+.dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+  text-align: center;
+}
+
+.display-item h2 {
+  font-size: 0.9rem;
+}
+
+.display-item .status {
+  font-size: 1.5rem;
+}
+
+/* SVG Gauge sizing for mobile */
+.rpm-gauge {
+  width: 220px;
+}
+
+/* =============================================== */
+/* 2. Tablet Styles                              */
+/* =============================================== */
+@media (min-width: 768px) {
+  .race-control-panel {
+    padding: 2rem;
+    max-width: 600px;
+  }
+
+  h1 {
+    font-size: 2rem; /* Increase font size */
+  }
+
+  .status-text {
+    font-size: 1.2rem;
+  }
+
+  .control-button {
+    padding: 15px;
+    font-size: 1.2rem;
+  }
+
+  .dashboard {
+    gap: 1.5rem;
+  }
+
+  .rpm-gauge {
+    width: 250px; /* Slightly larger gauge */
+  }
+}
+
+/* =============================================== */
+/* 3. Desktop Styles                             */
+/* =============================================== */
+@media (min-width: 1024px) {
+  .race-control-panel {
+    max-width: 700px;
+  }
+
+  .rpm-gauge {
+    width: 300px; /* Even larger gauge for desktop */
+  }
+
+  .display-item .status {
+    font-size: 1.8rem; /* Larger status text */
+  }
+}
+
+/* --- Unchanged Styles Below --- */
+
 .status-panel {
   display: flex;
   align-items: center;
@@ -214,25 +322,6 @@ h1 {
   background-color: #2ecc40;
   box-shadow: 0 0 10px #2ecc40;
 }
-.status-text {
-  font-size: 1.2rem;
-  font-weight: bold;
-}
-.control-button {
-  display: block;
-  width: 100%;
-  padding: 15px;
-  font-size: 1.2rem;
-  color: #1e1e1e;
-  background-color: #00ffff;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-bottom: 2rem;
-  transition:
-    background-color 0.3s,
-    box-shadow 0.3s;
-}
 .control-button:hover:not(:disabled) {
   background-color: #39cccc;
   box-shadow: 0 0 15px #00ffff;
@@ -241,21 +330,10 @@ h1 {
   background-color: #555;
   cursor: not-allowed;
 }
-.dashboard {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1.5rem;
-  text-align: center;
-}
 .display-item h2 {
   color: #aaa;
-  font-size: 1rem;
   text-transform: uppercase;
   margin-bottom: 0.5rem;
-}
-.display-item .status {
-  font-size: 1.8rem;
-  font-weight: bold;
 }
 .status.on {
   color: #2ecc40;
@@ -279,16 +357,13 @@ h1 {
   padding: 0.5rem;
   border-radius: 4px;
 }
-
-/* NEW: SVG Gauge Styles */
 .gauge-container {
   margin-bottom: 2rem;
   display: flex;
   justify-content: center;
 }
 .rpm-gauge {
-  width: 250px;
-  transform: rotateX(180deg); /* Flip SVG for intuitive drawing */
+  transform: rotateX(180deg);
 }
 .gauge-bg,
 .gauge-needle {
@@ -301,15 +376,15 @@ h1 {
 }
 .gauge-needle {
   stroke: #00ffff;
-  stroke-dasharray: 125.6; /* Circumference of the arc */
-  stroke-dashoffset: 125.6; /* Initially empty */
+  stroke-dasharray: 125.6;
+  stroke-dashoffset: 125.6;
   transition: stroke-dashoffset 0.8s cubic-bezier(0.6, 0, 0.2, 1);
 }
 .rpm-text,
 .rpm-label {
   font-family: "Orbitron", sans-serif;
   text-anchor: middle;
-  transform: rotateX(180deg); /* Flip text back */
+  transform: rotateX(180deg);
 }
 .rpm-text {
   fill: #fff;
