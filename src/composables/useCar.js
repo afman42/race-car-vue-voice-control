@@ -4,6 +4,9 @@ import { ref, computed, watch } from "vue";
 import { CAR_SETTINGS } from "@/config";
 import audioService from "@/services/audioService";
 import ttsService from "@/services/textToSpeechService";
+
+
+audioService.loadSounds();
 // --- SHARED STATE (SINGLETON PATTERN) ---
 // By defining state outside the function, every component that calls useCar()
 // will share this same reactive state.
