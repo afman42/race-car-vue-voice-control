@@ -25,19 +25,36 @@ export default {
     }
   },
 
-  /**
-   * Plays a pre-loaded sound.
-   * @param {string} name - The name of the sound to play (e.g., 'engineStart').
+/**
+   * PLAYS A SOUND AND RETURNS A PROMISE THAT RESOLVES WHEN IT'S FINISHED.
+   * @param {string} name - The name of the sound to play.
+   * @returns {Promise<void>}
    */
   playSound(name) {
-    if (sounds[name]) {
-      // Rewind to the start in case it's played again quickly
-      sounds[name].currentTime = 0;
-      sounds[name].play().catch(error => {
-        console.error(`Could not play sound: ${name}`, error);
-      });
-    } else {
-      console.warn(`Sound not found: ${name}`);
-    }
+    // Wrap the entire logic in a new Promise
+    return new Promise((resolve, reject) => {
+      if (sounds[name]) {
+        const audio = sounds[name];
+        
+        // Function to handle cleanup and resolve the promise
+        const onEnded = () => {
+          audio.removeEventListener('ended', onEnded); // Clean up the listener
+          resolve();
+        };
+
+        audio.addEventListener('ended', onEnded);
+        
+        audio.currentTime = 0;
+        audio.play().catch(error => {
+          console.error(`Could not play sound: ${name}`, error);
+          audio.removeEventListener('ended', onEnded); // Clean up on error too
+          reject(error);
+        });
+      } else {
+        const warning = `Sound not found: ${name}`;
+        console.warn(warning);
+        reject(new Error(warning)); // Reject the promise if sound is not found
+      }
+    });
   },
 };

@@ -115,38 +115,35 @@ const speakAndSetStatus = (text) => {
   }, 2000);
 };
 
-// ENHANCED: processCommand function now plays audio
-const processCommand = (transcript) => {
+// *** MAKE THIS FUNCTION ASYNC ***
+const processCommand = async (transcript) => {
   lastTranscript.value = transcript;
-  let response = "Unknown command.";
+  let response = 'Unknown command.';
+  let soundToPlay = null;
 
-  if (transcript.includes("start engine")) {
+  // --- Determine command and sound ---
+  if (transcript.includes('start engine')) {
     engineStatus.value = true;
     rpm.value = 750;
-    response = "Engine started.";
-    audioService.playSound("engineStart"); // Play sound
-  } else if (
-    transcript.includes("stop engine") ||
-    transcript.includes("shut down")
-  ) {
+    response = 'Engine started.';
+    soundToPlay = 'engineStart';
+  } else if (transcript.includes('stop engine') || transcript.includes("shut down")
+) {
     engineStatus.value = false;
     rpm.value = 0;
-    response = "Engine stopped.";
-    audioService.playSound("engineStop"); // Play sound
-  } else if (
-    transcript.includes("activate drs") ||
-    transcript.includes("enable drs")
-  ) {
+    response = 'Engine stopped.';
+    soundToPlay = 'engineStop';
+  } else if (transcript.includes('activate drs')  || transcript.includes("enable drs")) {
     drsStatus.value = true;
-    response = "DRS enabled.";
-    audioService.playSound("drsOn"); // Play sound
-  } else if (
+    response = 'DRS enabled.';
+    soundToPlay = 'drsOn';
+  }else if (
     transcript.includes("deactivate drs") ||
     transcript.includes("disable drs")
   ) {
     drsStatus.value = false;
     response = "DRS disabled.";
-    audioService.playSound("drsOff"); // Play sound
+    soundToPlay = 'drsOff';
   } else if (
     transcript.includes("check tires") ||
     transcript.includes("tire status")
@@ -164,6 +161,52 @@ const processCommand = (transcript) => {
 
   speakAndSetStatus(response);
 };
+  }
+
+  // --- Execute the sequence ---
+  // 1. Immediately stop listening to free up the audio hardware
+  speechService.stopListening();
+  isListening.value = false; // Manually update UI state
+
+  // 2. Play the sound effect and WAIT for it to finish
+  if (soundToPlay) {
+    try {
+      await audioService.playSound(soundToPlay);
+    } catch (error) {
+      console.error("Error playing sound, proceeding anyway.", error);
+    }
+  }
+
+  // 3. Give text-to-speech feedback
+  speakAndSetStatus(response);
+
+  // 4. Restart listening AFTER everything else is done
+  // We add a small delay to ensure TTS doesn't conflict
+  setTimeout(() => {
+    // Only restart if the user hasn't manually stopped it in the meantime
+    if (!isManuallyStopped.value) { // We'll need a new ref for this
+        toggleListening(true); // Restart listening
+    }
+  }, 1500); // Adjust delay as needed
+};
+
+// We need a ref to track the user's intent
+const isManuallyStopped = ref(false);
+
+const toggleListening = (forceStart = false) => {
+  if (isListening.value && !forceStart) {
+    isManuallyStopped.value = true;
+    speechService.stopListening();
+    isListening.value = false;
+    statusMessage.value = 'Listening stopped.';
+  } else {
+    isManuallyStopped.value = false;
+    speechService.startListening(processCommand, handleError);
+    isListening.value = true;
+    statusMessage.value = 'Listening... Speak a command!';
+  }
+};
+
 
 // The rest of the functions (handleError, toggleListening) remain the same.
 const handleError = (error) => {
@@ -185,18 +228,6 @@ const handleError = (error) => {
   rpm.value = 0;
   engineStatus.value = false;
   speakAndSetStatus(errorMessage);
-};
-
-const toggleListening = () => {
-  if (isListening.value) {
-    speechService.stopListening();
-    isListening.value = false;
-    statusMessage.value = "Listening stopped.";
-  } else {
-    speechService.startListening(processCommand, handleError);
-    isListening.value = true;
-    statusMessage.value = "Listening... Speak a command!";
-  }
 };
 </script>
 
