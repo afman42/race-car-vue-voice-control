@@ -150,7 +150,8 @@ const processCommand = async (transcript) => {
     transcript.includes("activate overtake") ||
     transcript.includes("enable overtake") ||
     transcript.includes("overtake") ||
-    transcript.includes("take")
+    transcript.includes("take") ||
+    transcript.includes("ready")
   ) {
     message = await activateOvertake();
   } else if (
@@ -163,7 +164,7 @@ const processCommand = async (transcript) => {
   } else if (
     transcript.includes("fuel status") ||
     transcript.includes("tank status") ||
-    transcript.includes("tank")
+    transcript.includes("gas")
   ) {
     message = await getFuelStatus();
   } else if (
