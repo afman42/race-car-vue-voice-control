@@ -4,8 +4,9 @@
 - Do not use VPN or proxy
 - use earphone
 - browser
-  - based chrome 'test'
-    - desktop: PC or laptop
+  - `chrome test`
+    - desktop: PC or laptop - feel full of features
+    - smartphone: half feel full of features
     - etc
 
 - Click listening,
