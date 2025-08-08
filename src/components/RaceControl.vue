@@ -96,11 +96,11 @@ const processCommand = async (transcript) => {
 
   if (transcript.includes('start engine')) { response = startEngine(); }
   else if (transcript.includes('stop engine')) { response = stopEngine(); }
-  else if (transcript.includes('activate drs')) { response = activateDrs(); }
-  else if (transcript.includes('activate overtake')) { response = activateOvertake(); }
-  else if (transcript.includes('tire status')) { response = { message: checkTireStatus() }; }
-  else if (transcript.includes('fuel status')) { response = { message: getFuelStatus() }; }
-  else if (transcript.includes('battery status')) { response = { message: getBatteryStatus() }; }
+  else if (transcript.includes('activate drs') || transcript.includes('enable drs') || transcript.includes('drs')) { response = activateDrs(); }
+  else if (transcript.includes('activate overtake') || transcript.includes('enable overtake') || transcript.includes('overtake')) { response = activateOvertake(); }
+  else if (transcript.includes('tire status') || transcript.includes('check tire') || transcript.includes('tire')) { response = { message: checkTireStatus() }; }
+  else if (transcript.includes('fuel status') || transcript.includes('tank status') || transcript.includes('tangki') ||) { response = { message: getFuelStatus() }; }
+  else if (transcript.includes('battery status') || transcript.includes('battery')) { response = { message: getBatteryStatus() }; }
   else if (transcript.includes('pit stop')) { response = { message: await performPitStop() }; }
   
   // No need for complex audio sequencing here, it's handled in the composable's actions.
