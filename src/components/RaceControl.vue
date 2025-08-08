@@ -7,12 +7,12 @@
       <p class="status-text">{{ statusMessage }}</p>
     </div>
 
-    <button @click="toggleListening" class="control-button" :disabled="isSpeaking">
+    <button @click="toggleListening" class="control-button">
       {{ isListening ? 'Stop Radio' : 'Open Radio Channel' }}
     </button>
 
     <div class="gauge-container">
-       <svg class="rpm-gauge" viewBox="0 0 100 57">
+      <svg class="rpm-gauge" viewBox="0 0 100 57">
         <path class="gauge-bg" d="M10 50 A 40 40 0 0 1 90 50"></path>
         <path
           class="gauge-needle"
@@ -33,8 +33,8 @@
       <div class="display-item"><h2>DRS</h2><p :class="['status', drsStatus ? 'on' : 'off']">{{ drsStatus ? 'ENABLED' : 'DISABLED' }}</p></div>
       <div class="display-item"><h2>Overtake</h2><p :class="['status', overtakeActive ? 'on' : 'off']">{{ overtakeActive ? 'ACTIVE' : 'READY' }}</p></div>
       <div class="display-item"><h2>Tires</h2><p class="status info">{{ tireStatus }}</p></div>
-      <div class="display-item"><h2>Fuel Level</h2><p class="status info">{{ fuelLevel }}%</p></div>
-      <div class="display-item"><h2>Battery</h2><p :class="['status', !isLowBattery ? 'on' : 'off']">{{ batteryLevel }}%</p></div>
+      <div class="display-item"><h2>Fuel Level</h2><p class="status info">{{ fuelLevel.toFixed(1) }}%</p></div>
+      <div class="display-item"><h2>Battery</h2><p :class="['status', !isLowBattery ? 'on' : 'off']">{{ batteryLevel.toFixed(1) }}%</p></div>
     </div>
 
     <div class="transcript-log">
@@ -48,52 +48,50 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useCar } from '@/composables/useCar';
 import speechService from '@/services/speechRecognitionService';
-import ttsService from '@/services/textToSpeechService';
 import { CAR_SETTINGS } from '@/config';
 
-// --- GET ALL CAR LOGIC AND STATE FROM THE COMPOSABLE ---
+// --- 1. Get All Car Logic & State from the Composable ---
 const {
   engineStatus, rpm, drsStatus, overtakeActive, tireStatus, fuelLevel, batteryLevel, isLowBattery,
   startEngine, stopEngine, activateDrs, activateOvertake, checkTireStatus, getFuelStatus, getBatteryStatus, performPitStop
 } = useCar();
 
-
-// --- UI-ONLY STATE ---
+// --- 2. UI-Only State (Specific to this component) ---
 const isListening = ref(false);
-const isSpeaking = ref(false);
 const statusMessage = ref('Open Radio Channel');
 const lastTranscript = ref('...');
 const isManuallyStopped = ref(true);
 
-
-// --- SVG GAUGE LOGIC (Remains in component as it's tied to a DOM element) ---
+// --- 3. DOM-Specific Logic (SVG Gauge Measurement) ---
 const gaugeNeedlePath = ref(null);
 const gaugeCircumference = ref(0);
+
 onMounted(() => {
   if (gaugeNeedlePath.value) {
     gaugeCircumference.value = gaugeNeedlePath.value.getTotalLength();
   }
 });
+
 const rpmNeedleOffset = computed(() => {
-  if (gaugeCircumference.value === 0) return 0;
+  if (gaugeCircumference.value === 0) return gaugeCircumference.value;
   const rpmPercentage = rpm.value / CAR_SETTINGS.RPM_MAX;
   return gaugeCircumference.value * (1 - rpmPercentage);
 });
 
+// --- 4. Methods to Connect UI to Services and Composables ---
 
-// --- METHODS THAT INTERACT WITH SERVICES AND THE COMPOSABLE ---
-const speakAndSetStatus = (text) => {
-  statusMessage.value = text;
-  isSpeaking.value = true;
-  ttsService.speak(text);
-  setTimeout(() => { isSpeaking.value = false; }, 2000);
-};
-
-// This function is now much simpler! It just maps transcripts to actions.
+/**
+ * Main command processor. Maps a voice transcript to a composable action.
+ */
 const processCommand = async (transcript) => {
   lastTranscript.value = transcript;
-  let response = { message: 'Copy that. Standing by.' }; // Default response
+  let message = 'Copy that. Standing by.'; // Default message for unknown commands
 
+  // Stop listening immediately to prevent feedback loops
+  speechService.stopListening();
+  isListening.value = false;
+
+  // Map transcript to the appropriate async action from our composable
   if (transcript.includes('start engine')) { response = startEngine(); }
   else if (transcript.includes('stop engine') || transcript.includes('shut down')) { response = stopEngine(); }
   else if (transcript.includes('activate drs') || transcript.includes('enable drs') || transcript.includes('drs') || transcript.includes('dr')) { response = activateDrs(); }
@@ -103,14 +101,18 @@ const processCommand = async (transcript) => {
   else if (transcript.includes('battery status') || transcript.includes('battery')) { response = { message: getBatteryStatus() }; }
   else if (transcript.includes('pit stop')) { response = { message: await performPitStop() }; }
   
-  // No need for complex audio sequencing here, it's handled in the composable's actions.
-  speakAndSetStatus(response.message);
+  // Update the UI with the final message from the action
+  statusMessage.value = message;
 
+  // Restart the listening loop if not manually stopped
   setTimeout(() => {
     if (!isManuallyStopped.value) { toggleListening(true); }
-  }, 1500);
+  }, 500);
 };
 
+/**
+ * Toggles the master listening state.
+ */
 const toggleListening = (forceStart = false) => {
   if (isListening.value && !forceStart) {
     isManuallyStopped.value = true;
@@ -125,83 +127,80 @@ const toggleListening = (forceStart = false) => {
   }
 };
 
-
-// The rest of the functions (handleError, toggleListening) remain the same.
+/**
+ * Handles errors from the speech recognition service.
+ */
 const handleError = (error) => {
-  let errorMessage = "An unknown error occurred.";
+  let errorMessage = 'An unknown error occurred.';
   switch (error) {
-    case "not-allowed":
-    case "service-not-allowed":
-      errorMessage =
-        "Error: Microphone access denied. Please enable it in your browser settings and refresh the page.";
+    case 'not-allowed':
+    case 'service-not-allowed':
+      errorMessage = 'Error: Microphone access denied.';
       break;
-    case "no-speech":
-      errorMessage = "I didn't hear anything. Please try again.";
+    case 'no-speech':
+      errorMessage = 'Copy that, standing by.';
       break;
-    case "network":
-      errorMessage = "Network error. Please check your connection.";
+    case 'network':
+      errorMessage = 'Network error with radio signal.';
       break;
   }
+  statusMessage.value = errorMessage;
   isListening.value = false;
-  rpm.value = 0;
-  engineStatus.value = false;
-  speakAndSetStatus(errorMessage);
 };
+
+/**
+ * Clean up when the component is removed from the page.
+ */
 onUnmounted(() => {
   speechService.stopListening();
-  // The simulation interval will be cleared automatically by the watcher in the composable
 });
 </script>
 
 <style scoped>
 /* =============================================== */
-/* 1. Base Styles (Mobile-First) 📱              */
+/* 1. Base Styles (Mobile-First)                   */
 /* =============================================== */
 .race-control-panel {
-  font-family: "Orbitron", sans-serif;
+  font-family: 'Orbitron', sans-serif;
   background-color: #1e1e1e;
   color: #e0e0e0;
-  margin: 1rem auto; /* Use margin for spacing */
-  padding: 1.5rem; /* Reduced padding for small screens */
+  margin: 1rem auto;
+  padding: 1.5rem;
   border-radius: 15px;
   border: 2px solid #444;
   box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
-  width: 90%; /* Fluid width */
-  max-width: 500px; /* Max width for larger phones */
-  box-sizing: border-box; /* Ensures padding is included in width */
+  width: 90%;
+  max-width: 500px;
+  box-sizing: border-box;
 }
 
 h1 {
   color: #00ffff;
   text-align: center;
   text-transform: uppercase;
-  font-size: 1.5rem; /* Smaller font size for mobile */
+  font-size: 1.5rem;
   margin-bottom: 1.5rem;
 }
 
-.status-text {
-  font-size: 1rem;
-  font-weight: bold;
-}
+.status-panel { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 1.5rem; }
+.light { width: 20px; height: 20px; background-color: #ff4136; border-radius: 50%; transition: background-color 0.3s; }
+.light.active { background-color: #2ecc40; box-shadow: 0 0 10px #2ecc40; }
+.status-text { font-size: 1rem; font-weight: bold; }
 
 .control-button {
+  display: block;
   width: 100%;
   padding: 12px;
   font-size: 1rem;
-  /* ... other button styles remain the same */
-  display: block;
   color: #1e1e1e;
   background-color: #00ffff;
   border: none;
   border-radius: 8px;
   cursor: pointer;
   margin-bottom: 2rem;
-  transition:
-    background-color 0.3s,
-    box-shadow 0.3s;
+  transition: background-color 0.3s, box-shadow 0.3s;
 }
 
-/* The dashboard grid is already nicely responsive! */
 .dashboard {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -209,159 +208,45 @@ h1 {
   text-align: center;
 }
 
-.display-item h2 {
-  font-size: 0.9rem;
-}
+.display-item h2 { color: #aaa; font-size: 0.9rem; text-transform: uppercase; margin-bottom: 0.5rem; }
+.display-item .status { font-size: 1.5rem; font-weight: bold; }
+.status.on { color: #2ecc40; }
+.status.off { color: #ff4136; }
+.status.info { color: #ffdc00; }
 
-.display-item .status {
-  font-size: 1.5rem;
-}
+.gauge-container { margin-bottom: 2rem; display: flex; justify-content: center; }
+.rpm-gauge { width: 220px; transform: rotateX(180deg); }
+.gauge-bg, .gauge-needle { fill: none; stroke-width: 10; stroke-linecap: round; }
+.gauge-bg { stroke: #333; }
+.gauge-needle { stroke: #00ffff; transition: stroke-dashoffset 0.8s cubic-bezier(0.6, 0, 0.2, 1); }
+.rpm-text, .rpm-label { font-family: 'Orbitron', sans-serif; text-anchor: middle; transform: rotateX(180deg); }
+.rpm-text { fill: #fff; font-size: 20px; font-weight: bold; }
+.rpm-label { fill: #888; font-size: 8px; }
 
-/* SVG Gauge sizing for mobile */
-.rpm-gauge {
-  width: 220px;
-}
+.transcript-log { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #444; color: #888; }
+.transcript-log p { font-family: monospace; font-style: italic; background-color: #2a2a2a; padding: 0.5rem; border-radius: 4px; }
 
 /* =============================================== */
-/* 2. Tablet Styles                              */
+/* 2. Tablet Styles                                */
 /* =============================================== */
 @media (min-width: 768px) {
-  .race-control-panel {
-    padding: 2rem;
-    max-width: 600px;
-  }
-
-  h1 {
-    font-size: 2rem; /* Increase font size */
-  }
-
-  .status-text {
-    font-size: 1.2rem;
-  }
-
-  .control-button {
-    padding: 15px;
-    font-size: 1.2rem;
-  }
-
-  .dashboard {
-    gap: 1.5rem;
-  }
-
-  .rpm-gauge {
-    width: 250px; /* Slightly larger gauge */
-  }
+  .race-control-panel { padding: 2rem; max-width: 600px; }
+  h1 { font-size: 2rem; }
+  .status-text { font-size: 1.2rem; }
+  .control-button { padding: 15px; font-size: 1.2rem; }
+  .dashboard { gap: 1.5rem; }
+  .rpm-gauge { width: 250px; }
 }
 
 /* =============================================== */
-/* 3. Desktop Styles                             */
+/* 3. Desktop Styles                               */
 /* =============================================== */
 @media (min-width: 1024px) {
-  .race-control-panel {
-    max-width: 700px;
-  }
-
-  .rpm-gauge {
-    width: 300px; /* Even larger gauge for desktop */
-  }
-
-  .display-item .status {
-    font-size: 1.8rem; /* Larger status text */
-  }
+  .race-control-panel { max-width: 700px; }
+  .rpm-gauge { width: 300px; }
+  .display-item .status { font-size: 1.8rem; }
 }
 
-/* --- Unchanged Styles Below --- */
-
-.status-panel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 1.5rem;
-}
-.light {
-  width: 20px;
-  height: 20px;
-  background-color: #ff4136;
-  border-radius: 50%;
-  transition: background-color 0.3s;
-}
-.light.active {
-  background-color: #2ecc40;
-  box-shadow: 0 0 10px #2ecc40;
-}
-.control-button:hover:not(:disabled) {
-  background-color: #39cccc;
-  box-shadow: 0 0 15px #00ffff;
-}
-.control-button:disabled {
-  background-color: #555;
-  cursor: not-allowed;
-}
-.display-item h2 {
-  color: #aaa;
-  text-transform: uppercase;
-  margin-bottom: 0.5rem;
-}
-.status.on {
-  color: #2ecc40;
-}
-.status.off {
-  color: #ff4136;
-}
-.status.info {
-  color: #ffdc00;
-}
-.transcript-log {
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid #444;
-  color: #888;
-}
-.transcript-log p {
-  font-family: monospace;
-  font-style: italic;
-  background-color: #2a2a2a;
-  padding: 0.5rem;
-  border-radius: 4px;
-}
-.gauge-container {
-  margin-bottom: 2rem;
-  display: flex;
-  justify-content: center;
-}
-.rpm-gauge {
-  transform: rotateX(180deg);
-}
-.gauge-bg,
-.gauge-needle {
-  fill: none;
-  stroke-width: 10;
-  stroke-linecap: round;
-}
-.gauge-bg {
-  stroke: #333;
-}
-.gauge-needle {
-  stroke: #00ffff;
-  /* REMOVE these two lines from the CSS */
-  /* stroke-dasharray: 125.6; */
-  /* stroke-dashoffset: 125.6; */
-  transition: stroke-dashoffset 0.8s cubic-bezier(0.6, 0, 0.2, 1);
-}
-.rpm-text,
-.rpm-label {
-  font-family: "Orbitron", sans-serif;
-  text-anchor: middle;
-  transform: rotateX(180deg);
-}
-.rpm-text {
-  fill: #fff;
-  font-size: 20px;
-  font-weight: bold;
-}
-.rpm-label {
-  fill: #888;
-  font-size: 8px;
-}
+.control-button:hover:not(:disabled) { background-color: #39cccc; box-shadow: 0 0 15px #00ffff; }
+.control-button:disabled { background-color: #555; cursor: not-allowed; }
 </style>
