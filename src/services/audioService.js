@@ -19,9 +19,14 @@ export default {
    * This is crucial for instant playback without network delay.
    */
   loadSounds() {
+    if (typeof window === "undefined" || typeof window.Audio === "undefined") {
+      console.warn("Audio API not available; skipping sound preload.");
+      return;
+    }
+
     console.log("Loading sounds...");
     for (const key in soundFiles) {
-      const audio = new Audio(soundFiles[key]);
+      const audio = new window.Audio(soundFiles[key]);
       audio.preload = "auto";
       sounds[key] = audio;
     }
@@ -33,6 +38,9 @@ export default {
    * @returns {Promise<void>}
    */
   playSound(name) {
+    if (typeof window === "undefined" || typeof window.Audio === "undefined") {
+      return Promise.resolve();
+    }
     // Wrap the entire logic in a new Promise
     return new Promise((resolve, reject) => {
       if (sounds[name]) {

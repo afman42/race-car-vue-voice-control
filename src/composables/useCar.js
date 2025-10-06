@@ -5,8 +5,9 @@ import { CAR_SETTINGS } from "@/config";
 import audioService from "@/services/audioService";
 import ttsService from "@/services/textToSpeechService";
 
-
-audioService.loadSounds();
+if (typeof window !== "undefined" && typeof window.Audio !== "undefined") {
+  audioService.loadSounds();
+}
 // --- SHARED STATE (SINGLETON PATTERN) ---
 // By defining state outside the function, every component that calls useCar()
 // will share this same reactive state.
@@ -82,18 +83,25 @@ export function useCar() {
     return message;
   };
 
-  const activateDrs = () => {
-    if (!engineStatus.value)
-      return {
-        success: false,
-        message: "Cannot activate DRS. The engine is off.",
-      };
-    if (drsStatus.value)
-      return { success: false, message: "DRS is already active." };
+  const activateDrs = async () => {
+    let message = "";
 
-    drsStatus.value = true;
-    audioService.playSound("drsOn");
-    return { success: true, message: "DRS enabled." };
+    if (!engineStatus.value) {
+      message = "Cannot activate DRS. The engine is off.";
+    } else if (drsStatus.value) {
+      message = "DRS is already active.";
+    } else {
+      drsStatus.value = true;
+      try {
+        await audioService.playSound("drsOn");
+      } catch (error) {
+        console.error("Failed to play DRS activation sound.", error);
+      }
+      message = "DRS enabled.";
+    }
+
+    await ttsService.speak(message);
+    return message;
   };
 
   const activateOvertake = async () => {
@@ -152,7 +160,7 @@ export function useCar() {
   };
 
   const performPitStop = async () => {
-    stopEngine(); // Use existing actions
+    await stopEngine(); // Use existing actions
     await new Promise((resolve) =>
       setTimeout(resolve, CAR_SETTINGS.PIT_STOP_DURATION_MS),
     );
@@ -161,7 +169,7 @@ export function useCar() {
     batteryLevel.value = 100;
     tireStatus.value = "New";
 
-    startEngine();
+    await startEngine();
     return "Pit stop complete. Car serviced.";
   };
 

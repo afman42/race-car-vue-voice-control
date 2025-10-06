@@ -198,9 +198,14 @@ const toggleListening = (forceStart = false) => {
     statusMessage.value = "Radio Channel Closed";
   } else {
     isManuallyStopped.value = false;
-    speechService.startListening(processCommand, handleError);
-    isListening.value = true;
-    statusMessage.value = "Radio Open: Listening...";
+    const started = speechService.startListening(processCommand, handleError);
+    if (started) {
+      isListening.value = true;
+      statusMessage.value = "Radio Open: Listening...";
+    } else {
+      isListening.value = false;
+      isManuallyStopped.value = true;
+    }
   }
 };
 
@@ -208,11 +213,18 @@ const toggleListening = (forceStart = false) => {
  * Handles errors from the speech recognition service.
  */
 const handleError = (error) => {
+  const errorCode =
+    typeof error === "string"
+      ? error
+      : error?.error || error?.message || "unknown";
   let errorMessage = "An unknown error occurred.";
-  switch (error) {
+  switch (errorCode) {
     case "not-allowed":
     case "service-not-allowed":
       errorMessage = "Error: Microphone access denied.";
+      break;
+    case "not-supported":
+      errorMessage = "Error: Speech recognition not supported.";
       break;
     case "no-speech":
       errorMessage = "Copy that, standing by.";
