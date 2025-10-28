@@ -29,16 +29,30 @@ export function useCar() {
 
   // --- PRIVATE METHODS (LOGIC) ---
   const runSimulationTick = () => {
-    let consumptionRate =
+    // Calculate fuel consumption based on fuel mix and RPM
+    let baseConsumptionRate =
       CAR_SETTINGS.FUEL_CONSUMPTION_RATE[fuelMix.value.toUpperCase()] ||
       CAR_SETTINGS.FUEL_CONSUMPTION_RATE.STANDARD;
 
+    // Calculate RPM-based multiplier (0 at idle, higher at higher RPM)
+    // RPM ranges from idle to max, so we normalize it from 0 to 1
+    const rpmRatio = (rpm.value - CAR_SETTINGS.RPM_IDLE) / (CAR_SETTINGS.RPM_MAX - CAR_SETTINGS.RPM_IDLE);
+    // Ensure the ratio is at least 0 (in case rpm is somehow below idle)
+    const normalizedRpmRatio = Math.max(0, rpmRatio);
+    
+    // Apply RPM-based multiplier to consumption rate
+    // Using a power function to make the consumption increase non-linearly with RPM
+    // This simulates how engines typically consume much more fuel at high RPM
+    const rpmMultiplier = 0.3 + (normalizedRpmRatio * 1.7); // Ranges from 0.3 (idle) to 2.0 (max RPM)
+    const totalConsumptionRate = baseConsumptionRate * rpmMultiplier;
+
     if (fuelLevel.value > 0) {
       fuelLevel.value = parseFloat(
-        Math.max(0, fuelLevel.value - consumptionRate).toFixed(2),
+        Math.max(0, fuelLevel.value - totalConsumptionRate).toFixed(2),
       );
     }
 
+    // Battery recharges at a constant rate when below 100% (independent of RPM)
     if (batteryLevel.value < 100) {
       batteryLevel.value = parseFloat(
         Math.min(
