@@ -21,6 +21,8 @@ A Vue.js application that allows you to control a virtual race car using voice c
 - **Bilingual Support**: Full English and Indonesian localization — UI text, voice responses, and voice commands all switch with the selected language
 - **Language Persistence**: Your language choice is saved to localStorage
 - **Accessible UI**: ARIA roles and live regions for screen-reader support
+- **Graceful Audio Handling**: Sound effects that silently skip on load failure, keeping voice interactions smooth
+- **Automatic Cleanup**: Simulation interval properly cleaned up when the component unmounts
 
 ## Language Support
 
@@ -92,6 +94,8 @@ When you switch languages:
 - A pit stop refuels, recharges, cools the engine, and fits fresh tires
 - All voice recognition happens in the browser using the Web Speech API
 - All i18n messages live in `src/i18n.js` — easy to extend with new locales
+- `audioService.js` tracks load errors per sound — broken audio files are silently skipped instead of crashing playback
+- `useCar.js` auto-cleans the simulation interval on component unmount (no stale ticks)
 - Tunable values live in `src/config.js`
 
 ## Project Structure
@@ -138,6 +142,17 @@ pnpm dev
 pnpm test       # watch mode
 pnpm test:run   # single run
 ```
+
+The test suite covers **70 tests** across 5 files:
+
+| Test File | Tests | Coverage |
+|---|---|---|
+| `useCar.spec.js` | 18 | Engine, DRS, overtake, fuel mix, tire status, pit stop — including edge cases (engine-off overtake) |
+| `useCarFeatures.spec.js` | 16 | Tire compounds, ERS modes, engine temperature, lap timer, help, reset |
+| `useCarSimulation.spec.js` | 9 | Fuel consumption, battery recharge, tire wear, warnings, stall — including battery cap and post-race behavior |
+| `commandRouter.spec.js` | 17 | All voice command keywords, no false matches, locale-specific matching (Indonesian + English fallback) |
+| `RaceControl.spec.js` | 10 | Dashboard render, radio toggle, voice/manual commands, unmount cleanup |
+
 
 ## Notes
 
