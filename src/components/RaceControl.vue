@@ -3,16 +3,31 @@
     <h1>Race Car Voice Control</h1>
 
     <div class="status-panel">
-      <div :class="['light', { active: isListening }]"></div>
-      <p class="status-text">{{ statusMessage }}</p>
+      <div
+        :class="['light', { active: isListening }]"
+        role="status"
+        :aria-label="isListening ? 'Radio channel open' : 'Radio channel closed'"
+      ></div>
+      <p class="status-text" role="status" aria-live="polite">
+        {{ statusMessage }}
+      </p>
     </div>
 
-    <button @click="toggleListening" class="control-button">
+    <button
+      @click="toggleListening"
+      class="control-button"
+      :aria-pressed="isListening"
+    >
       {{ isListening ? "Stop Radio" : "Open Radio Channel" }}
     </button>
 
     <div class="gauge-container">
-      <svg class="rpm-gauge" viewBox="0 0 100 57">
+      <svg
+        class="rpm-gauge"
+        viewBox="0 0 100 57"
+        role="img"
+        :aria-label="`Engine RPM ${rpm.toFixed(0)}`"
+      >
         <path class="gauge-bg" d="M10 50 A 40 40 0 0 1 90 50"></path>
         <path
           class="gauge-needle"
@@ -46,14 +61,30 @@
         <p :class="['status', overtakeActive ? 'on' : 'off']">
           {{ overtakeActive ? "ACTIVE" : "READY" }}
         </p>
+        <div
+          v-if="overtakeActive"
+          class="countdown-bar"
+          role="progressbar"
+          :aria-valuenow="Math.round(overtakeRemaining)"
+          aria-valuemin="0"
+          :aria-valuemax="100"
+          aria-label="Overtake time remaining"
+        >
+          <div
+            class="countdown-fill"
+            :style="{ width: `${overtakeRemaining}%` }"
+          ></div>
+        </div>
       </div>
       <div class="display-item">
         <h2>Tires</h2>
-        <p class="status info">{{ tireStatus }}</p>
+        <p class="status info">{{ tireStatus }} ({{ tireLife.toFixed(0) }}%)</p>
       </div>
       <div class="display-item">
         <h2>Fuel Level</h2>
-        <p class="status info">{{ fuelLevel.toFixed(1) }}%</p>
+        <p :class="['status', isLowFuel ? 'off' : 'info']">
+          {{ fuelLevel.toFixed(1) }}%
+        </p>
       </div>
       <div class="display-item">
         <h2>Battery</h2>
@@ -61,11 +92,15 @@
           {{ batteryLevel.toFixed(1) }}%
         </p>
       </div>
+      <div class="display-item">
+        <h2>Fuel Mix</h2>
+        <p class="status info">{{ fuelMix }}</p>
+      </div>
     </div>
 
     <div class="transcript-log">
       <h3>Last Command Heard:</h3>
-      <p>{{ lastTranscript }}</p>
+      <p aria-live="polite">{{ lastTranscript }}</p>
     </div>
   </div>
 </template>
@@ -73,6 +108,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useCar } from "@/composables/useCar";
+import { matchCommand } from "@/composables/commandRouter";
 import speechService from "@/services/speechRecognitionService";
 import { CAR_SETTINGS } from "@/config";
 
@@ -83,31 +119,43 @@ const {
   drsStatus,
   overtakeActive,
   tireStatus,
+  tireLife,
   fuelLevel,
   batteryLevel,
+  fuelMix,
   isLowBattery,
+  isLowFuel,
   startEngine,
   stopEngine,
   activateDrs,
+  deactivateDrs,
   activateOvertake,
+  setFuelMix,
   checkTireStatus,
   getFuelStatus,
   getBatteryStatus,
   performPitStop,
+  resetRace,
 } = useCar();
 
 // --- 2. UI-Only State (Specific to this component) ---
 const isListening = ref(false);
 const statusMessage = ref("Open Radio Channel");
 const lastTranscript = ref("...");
-const isManuallyStopped = ref(true);
+
+// Overtake countdown (percent remaining, 100 -> 0).
+const overtakeRemaining = ref(0);
+let overtakeCountdownInterval = null;
 
 // --- 3. DOM-Specific Logic (SVG Gauge Measurement) ---
 const gaugeNeedlePath = ref(null);
 const gaugeCircumference = ref(0);
 
 onMounted(() => {
-  if (gaugeNeedlePath.value) {
+  if (
+    gaugeNeedlePath.value &&
+    typeof gaugeNeedlePath.value.getTotalLength === "function"
+  ) {
     gaugeCircumference.value = gaugeNeedlePath.value.getTotalLength();
   }
 });
@@ -118,62 +166,67 @@ const rpmNeedleOffset = computed(() => {
   return gaugeCircumference.value * (1 - rpmPercentage);
 });
 
-// --- 4. Methods to Connect UI to Services and Composables ---
+// --- 4. Command Dispatch ---
+
+// Maps command keys (from the router) to the composable action that runs them.
+const commandActions = {
+  pitStop: performPitStop,
+  reset: resetRace,
+  startEngine,
+  stopEngine,
+  fuelMixLean: () => setFuelMix("LEAN"),
+  fuelMixRich: () => setFuelMix("RICH"),
+  fuelMixStandard: () => setFuelMix("STANDARD"),
+  overtake: activateOvertake,
+  deactivateDrs,
+  activateDrs,
+  tireStatus: checkTireStatus,
+  fuelStatus: getFuelStatus,
+  batteryStatus: getBatteryStatus,
+};
+
+/**
+ * Start the visual countdown bar for the overtake boost.
+ */
+const startOvertakeCountdown = () => {
+  if (overtakeCountdownInterval) clearInterval(overtakeCountdownInterval);
+  const start = Date.now();
+  overtakeRemaining.value = 100;
+  overtakeCountdownInterval = setInterval(() => {
+    const elapsed = Date.now() - start;
+    const remaining = Math.max(
+      0,
+      100 - (elapsed / CAR_SETTINGS.OVERTAKE_DURATION_MS) * 100,
+    );
+    overtakeRemaining.value = remaining;
+    if (remaining <= 0) {
+      clearInterval(overtakeCountdownInterval);
+      overtakeCountdownInterval = null;
+    }
+  }, 100);
+};
 
 /**
  * Main command processor. Maps a voice transcript to a composable action.
  */
 const processCommand = async (transcript) => {
   lastTranscript.value = transcript;
-  let message = "Copy that. Standing by."; // Default message for unknown commands
 
   // Stop listening immediately to prevent feedback loops
   speechService.stopListening();
   isListening.value = false;
 
-  // Map transcript to the appropriate async action from our composable
-  if (transcript.includes("start engine")) {
-    message = await startEngine();
-  } else if (
-    transcript.includes("stop engine") ||
-    transcript.includes("shut down")
-  ) {
-    message = await stopEngine();
-  } else if (
-    transcript.includes("activate drs") ||
-    transcript.includes("enable drs") ||
-    transcript.includes("drs") ||
-    transcript.includes("dr")
-  ) {
-    message = await activateDrs();
-  } else if (
-    transcript.includes("activate overtake") ||
-    transcript.includes("enable overtake") ||
-    transcript.includes("overtake") ||
-    transcript.includes("take") ||
-    transcript.includes("ready")
-  ) {
-    message = await activateOvertake();
-  } else if (
-    transcript.includes("tire status") ||
-    transcript.includes("check tire") ||
-    transcript.includes("tire") ||
-    transcript.includes("t")
-  ) {
-    message = await checkTireStatus();
-  } else if (
-    transcript.includes("fuel status") ||
-    transcript.includes("tank status") ||
-    transcript.includes("gas")
-  ) {
-    message = await getFuelStatus();
-  } else if (
-    transcript.includes("battery status") ||
-    transcript.includes("battery")
-  ) {
-    message = await getBatteryStatus();
-  } else if (transcript.includes("pit stop")) {
-    message = await performPitStop();
+  const command = matchCommand(transcript);
+  let message;
+
+  if (command && commandActions[command]) {
+    message = await commandActions[command]();
+    if (command === "overtake" && overtakeActive.value) {
+      startOvertakeCountdown();
+    }
+  } else {
+    // #5: tell the user we heard them but didn't understand the command.
+    message = `Command not recognized: "${transcript}". Please repeat.`;
   }
 
   // Update the UI with the final message from the action
@@ -181,7 +234,7 @@ const processCommand = async (transcript) => {
 
   // Restart the listening loop if not manually stopped
   setTimeout(() => {
-    if (!isManuallyStopped.value) {
+    if (!speechService.isManuallyStopped()) {
       toggleListening(true);
     }
   }, 500);
@@ -192,19 +245,16 @@ const processCommand = async (transcript) => {
  */
 const toggleListening = (forceStart = false) => {
   if (isListening.value && !forceStart) {
-    isManuallyStopped.value = true;
     speechService.stopListening();
     isListening.value = false;
     statusMessage.value = "Radio Channel Closed";
   } else {
-    isManuallyStopped.value = false;
     const started = speechService.startListening(processCommand, handleError);
     if (started) {
       isListening.value = true;
       statusMessage.value = "Radio Open: Listening...";
     } else {
       isListening.value = false;
-      isManuallyStopped.value = true;
     }
   }
 };
@@ -242,6 +292,7 @@ const handleError = (error) => {
  */
 onUnmounted(() => {
   speechService.stopListening();
+  if (overtakeCountdownInterval) clearInterval(overtakeCountdownInterval);
 });
 </script>
 
@@ -335,6 +386,21 @@ h1 {
 }
 .status.info {
   color: #ffdc00;
+}
+
+.countdown-bar {
+  margin-top: 0.5rem;
+  width: 100%;
+  height: 6px;
+  background-color: #333;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.countdown-fill {
+  height: 100%;
+  background-color: #00ffff;
+  border-radius: 3px;
+  transition: width 0.1s linear;
 }
 
 .gauge-container {

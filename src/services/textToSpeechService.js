@@ -1,20 +1,27 @@
 // src/services/textToSpeechService.js
 
-const synth = window.speechSynthesis;
+const synth =
+  typeof window !== "undefined" && typeof window.speechSynthesis !== "undefined"
+    ? window.speechSynthesis
+    : null;
 
 export default {
   speak(textToSpeak) {
     return new Promise((resolve, reject) => {
-      if (synth.speaking) {
-        // Don't interrupt, just resolve immediately or reject.
-        // For this app, we can just let it finish.
-        console.warn('SpeechSynthesis is already speaking.');
-        resolve(); 
+      if (!synth) {
+        console.warn("SpeechSynthesis API not available; skipping speech.");
+        resolve();
         return;
       }
       if (!textToSpeak) {
         resolve();
         return;
+      }
+
+      // If something is already being spoken, cancel it so the newest
+      // message is heard rather than silently dropped.
+      if (synth.speaking || synth.pending) {
+        synth.cancel();
       }
 
       const utterance = new SpeechSynthesisUtterance(textToSpeak);

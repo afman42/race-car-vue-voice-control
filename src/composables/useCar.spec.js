@@ -2,119 +2,216 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useCar } from "./useCar";
+import { CAR_SETTINGS, FUEL_MIXES } from "@/config";
 import audioService from "@/services/audioService";
 import ttsService from "@/services/textToSpeechService";
 
-// Mock the services
-vi.mock("@/services/audioService", () => ({
-  default: {
-    loadSounds: vi.fn(),
-    playSound: vi.fn(() => Promise.resolve()),
-  },
-}));
-
-vi.mock("@/services/textToSpeechService", () => ({
-  default: {
-    speak: vi.fn(() => Promise.resolve()),
-  },
-}));
+// audioService and textToSpeechService are mocked globally in vitest.setup.js
 
 describe("useCar Composable", () => {
-  // Clear mock history before each test
-  beforeEach(() => {
+  // The composable uses a shared singleton state, so reset it before each test
+  // to keep tests independent of execution order.
+  beforeEach(async () => {
+    const { resetRace } = useCar();
+    await resetRace();
     vi.clearAllMocks();
-    // Resetting state is tricky with this singleton pattern.
-    // For robust testing, the composable could expose a `resetState` method.
-    // For now, we'll test actions sequentially.
   });
 
-  it("should have correct initial state", () => {
-    const { engineStatus, rpm, fuelLevel } = useCar();
-    expect(engineStatus.value).toBe(false);
-    expect(rpm.value).toBe(0);
-    expect(fuelLevel.value).toBe(100);
+  describe("initial / reset state", () => {
+    it("should have correct initial state", () => {
+      const { engineStatus, rpm, fuelLevel, batteryLevel, fuelMix, tireLife } =
+        useCar();
+      expect(engineStatus.value).toBe(false);
+      expect(rpm.value).toBe(0);
+      expect(fuelLevel.value).toBe(100);
+      expect(batteryLevel.value).toBe(100);
+      expect(fuelMix.value).toBe(FUEL_MIXES.STANDARD);
+      expect(tireLife.value).toBe(100);
+    });
+
+    it("resetRace should restore all state to defaults", async () => {
+      const { startEngine, fuelLevel, resetRace, engineStatus } = useCar();
+      await startEngine();
+      fuelLevel.value = 42;
+
+      const message = await resetRace();
+
+      expect(message).toBe("Race reset. All systems nominal.");
+      expect(engineStatus.value).toBe(false);
+      expect(fuelLevel.value).toBe(100);
+    });
   });
 
-  it("startEngine action should turn the engine on and set idle RPM", async () => {
-    const { startEngine, engineStatus, rpm } = useCar();
-    await startEngine();
+  describe("engine", () => {
+    it("startEngine should turn the engine on and set idle RPM", async () => {
+      const { startEngine, engineStatus, rpm } = useCar();
+      const message = await startEngine();
 
-    expect(engineStatus.value).toBe(true);
-    expect(rpm.value).toBe(750);
-    expect(audioService.playSound).toHaveBeenCalledWith("engineStart");
-    expect(ttsService.speak).toHaveBeenCalledWith("Engine started.");
+      expect(message).toBe("Engine started.");
+      expect(engineStatus.value).toBe(true);
+      expect(rpm.value).toBe(CAR_SETTINGS.RPM_IDLE);
+      expect(audioService.playSound).toHaveBeenCalledWith("engineStart");
+      expect(ttsService.speak).toHaveBeenCalledWith("Engine started.");
+    });
+
+    it("should not start the engine if it is already on", async () => {
+      const { startEngine } = useCar();
+      await startEngine();
+      vi.clearAllMocks();
+
+      const message = await startEngine();
+
+      expect(message).toBe("The engine is already running.");
+      expect(audioService.playSound).not.toHaveBeenCalled();
+    });
+
+    it("should not start the engine when out of fuel", async () => {
+      const { startEngine, fuelLevel } = useCar();
+      fuelLevel.value = 0;
+
+      const message = await startEngine();
+
+      expect(message).toBe("Cannot start engine. The fuel tank is empty.");
+      expect(audioService.playSound).not.toHaveBeenCalled();
+    });
+
+    it("stopEngine should turn the engine off", async () => {
+      const { startEngine, stopEngine, engineStatus, rpm } = useCar();
+      await startEngine();
+      vi.clearAllMocks();
+
+      const message = await stopEngine();
+
+      expect(message).toBe("Engine stopped.");
+      expect(engineStatus.value).toBe(false);
+      expect(rpm.value).toBe(0);
+      expect(audioService.playSound).toHaveBeenCalledWith("engineStop");
+    });
   });
 
-  // --- CORRECTED TEST 1 ---
-  it("should not start the engine if it is already on", async () => {
-    const { startEngine, engineStatus } = useCar();
+  describe("DRS", () => {
+    it("activateDrs should fail when engine is off", async () => {
+      const { activateDrs, drsStatus } = useCar();
+      const message = await activateDrs();
 
-    // The engine is already on from the previous test
-    expect(engineStatus.value).toBe(true);
+      expect(message).toBe("Cannot activate DRS. The engine is off.");
+      expect(drsStatus.value).toBe(false);
+    });
 
-    // Try to start again
-    const responseMessage = await startEngine();
+    it("activateDrs should enable when engine is running", async () => {
+      const { startEngine, activateDrs, drsStatus } = useCar();
+      await startEngine();
 
-    // THE FIX: Check the response string directly, not response.message
-    expect(responseMessage).toBe("The engine is already running.");
+      const message = await activateDrs();
 
-    // Ensure playSound was not called again
-    expect(audioService.playSound).not.toHaveBeenCalled();
+      expect(message).toBe("DRS enabled.");
+      expect(drsStatus.value).toBe(true);
+      expect(audioService.playSound).toHaveBeenCalledWith("drsOn");
+    });
+
+    it("deactivateDrs should disable an active DRS", async () => {
+      const { startEngine, activateDrs, deactivateDrs, drsStatus } = useCar();
+      await startEngine();
+      await activateDrs();
+
+      const message = await deactivateDrs();
+
+      expect(message).toBe("DRS disabled.");
+      expect(drsStatus.value).toBe(false);
+      expect(audioService.playSound).toHaveBeenCalledWith("drsOff");
+    });
+
+    it("deactivateDrs should report when DRS already off", async () => {
+      const { deactivateDrs } = useCar();
+      const message = await deactivateDrs();
+      expect(message).toBe("DRS is already disabled.");
+    });
   });
 
-  it("stopEngine action should turn the engine off", async () => {
-    const { stopEngine, engineStatus, rpm } = useCar();
+  describe("overtake", () => {
+    it("should fail if battery is too low", async () => {
+      const { startEngine, activateOvertake, batteryLevel } = useCar();
+      await startEngine();
+      batteryLevel.value = CAR_SETTINGS.OVERTAKE_BATTERY_COST - 1;
 
-    // Engine is on, so we can test stopping it
-    await stopEngine();
+      const message = await activateOvertake();
 
-    expect(engineStatus.value).toBe(false);
-    expect(rpm.value).toBe(0);
-    expect(audioService.playSound).toHaveBeenCalledWith("engineStop");
-    expect(ttsService.speak).toHaveBeenCalledWith("Engine stopped.");
+      expect(message).toBe("Not enough battery for overtake.");
+      expect(audioService.playSound).not.toHaveBeenCalledWith("overtakeOn");
+    });
+
+    it("should activate and spend battery when conditions are met", async () => {
+      const { startEngine, activateOvertake, overtakeActive, batteryLevel } =
+        useCar();
+      await startEngine();
+      const before = batteryLevel.value;
+
+      const message = await activateOvertake();
+
+      expect(message).toBe("Overtake mode activated.");
+      expect(overtakeActive.value).toBe(true);
+      expect(batteryLevel.value).toBe(before - CAR_SETTINGS.OVERTAKE_BATTERY_COST);
+      expect(audioService.playSound).toHaveBeenCalledWith("overtakeOn");
+    });
   });
 
-  it("activateDrs should provide feedback when engine is off", async () => {
-    const { stopEngine, activateDrs } = useCar();
+  describe("fuel mix", () => {
+    it("setFuelMix should change the mix for valid modes", async () => {
+      const { setFuelMix, fuelMix } = useCar();
 
-    await stopEngine();
+      expect(await setFuelMix("LEAN")).toBe("Fuel mix set to Lean.");
+      expect(fuelMix.value).toBe(FUEL_MIXES.LEAN);
 
-    const responseMessage = await activateDrs();
+      expect(await setFuelMix("rich")).toBe("Fuel mix set to Rich.");
+      expect(fuelMix.value).toBe(FUEL_MIXES.RICH);
+    });
 
-    expect(responseMessage).toBe("Cannot activate DRS. The engine is off.");
-    expect(ttsService.speak).toHaveBeenCalledWith(
-      "Cannot activate DRS. The engine is off.",
-    );
+    it("setFuelMix should reject unknown modes", async () => {
+      const { setFuelMix, fuelMix } = useCar();
+      const message = await setFuelMix("turbo");
+      expect(message).toBe("Unknown fuel mix: turbo.");
+      expect(fuelMix.value).toBe(FUEL_MIXES.STANDARD);
+    });
   });
 
-  it("activateDrs should enable the system when engine is running", async () => {
-    const { startEngine, stopEngine, activateDrs, drsStatus } = useCar();
+  describe("tire status", () => {
+    it("reports Cold tires before the car runs", () => {
+      const { tireStatus } = useCar();
+      expect(tireStatus.value).toBe("Cold");
+    });
 
-    await startEngine();
-    const responseMessage = await activateDrs();
+    it("derives label from tire life", async () => {
+      const { startEngine, tireStatus, tireLife } = useCar();
+      await startEngine();
 
-    expect(responseMessage).toBe("DRS enabled.");
-    expect(drsStatus.value).toBe(true);
-    expect(audioService.playSound).toHaveBeenCalledWith("drsOn");
-    expect(ttsService.speak).toHaveBeenCalledWith("DRS enabled.");
-
-    await stopEngine();
+      tireLife.value = 90;
+      expect(tireStatus.value).toBe("Optimal");
+      tireLife.value = 50;
+      expect(tireStatus.value).toBe("Used");
+      tireLife.value = 10;
+      expect(tireStatus.value).toBe("Worn");
+    });
   });
 
-  // --- CORRECTED TEST 2 ---
-  it("activateOvertake should fail if battery is too low", async () => {
-    const { startEngine, activateOvertake, batteryLevel } = useCar();
+  describe("pit stop", () => {
+    it("refuels, recharges and fits new tires", async () => {
+      vi.useFakeTimers();
+      const { startEngine, fuelLevel, batteryLevel, tireLife, performPitStop } =
+        useCar();
+      await startEngine();
+      fuelLevel.value = 20;
+      batteryLevel.value = 30;
+      tireLife.value = 15;
 
-    // Setup: Start engine and manually drain battery for the test
-    await startEngine();
-    batteryLevel.value = 10;
+      const pitStop = performPitStop();
+      await vi.advanceTimersByTimeAsync(CAR_SETTINGS.PIT_STOP_DURATION_MS);
+      const message = await pitStop;
 
-    const responseMessage = await activateOvertake();
-
-    // THE FIX: Check the response string directly, not response.message
-    expect(responseMessage).toBe("Not enough battery for overtake.");
-
-    // Ensure overtake sound was not played
-    expect(audioService.playSound).not.toHaveBeenCalledWith("overtakeOn");
+      expect(message).toBe("Pit stop complete. Car serviced.");
+      expect(fuelLevel.value).toBe(100);
+      expect(batteryLevel.value).toBe(100);
+      expect(tireLife.value).toBe(100);
+      vi.useRealTimers();
+    });
   });
 });

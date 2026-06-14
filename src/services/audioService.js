@@ -9,8 +9,7 @@ const soundFiles = {
   engineStop: "/audio/engine-stop.mp3",
   drsOn: "/audio/beep.mp3",
   drsOff: "/audio/beep.mp3",
-  radioBeep: "/audio/radio-beep.mp3", // ADD THIS
-  overtakeOn: "/audio/overtake-on.mp3", // ADD THIS
+  overtakeOn: "/audio/overtake-on.mp3",
 };
 
 export default {

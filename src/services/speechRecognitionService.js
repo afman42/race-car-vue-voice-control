@@ -95,4 +95,12 @@ export default {
       recognition.stop();
     }
   },
+
+  /**
+   * Whether listening was last stopped by the user (vs. still active).
+   * @returns {boolean}
+   */
+  isManuallyStopped() {
+    return isManuallyStopped;
+  },
 };
