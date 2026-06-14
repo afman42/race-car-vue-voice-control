@@ -1,7 +1,12 @@
 // src/composables/useCar.js
 
 import { ref, computed, watch } from "vue";
-import { CAR_SETTINGS, FUEL_MIXES } from "@/config";
+import {
+  CAR_SETTINGS,
+  FUEL_MIXES,
+  TIRE_COMPOUNDS,
+  ERS_MODES,
+} from "@/config";
 import audioService from "@/services/audioService";
 import ttsService from "@/services/textToSpeechService";
 
@@ -16,9 +21,16 @@ const rpm = ref(0);
 const drsStatus = ref(false);
 const overtakeActive = ref(false);
 const tireLife = ref(100); // 0..100, drives the tireStatus label
+const tireCompound = ref(TIRE_COMPOUNDS.MEDIUM.label);
 const fuelLevel = ref(100);
 const batteryLevel = ref(100);
 const fuelMix = ref(FUEL_MIXES.STANDARD); // 'Lean', 'Standard', 'Rich'
+const ersMode = ref(ERS_MODES.BALANCED.label);
+const engineTemp = ref(CAR_SETTINGS.TEMP_AMBIENT);
+const overheating = ref(false);
+const currentLap = ref(1);
+const lapProgress = ref(0); // 0..LAP_DISTANCE accumulated within the lap
+const raceFinished = ref(false);
 let simulationInterval = null;
 let overtakeTimeout = null;
 
@@ -26,6 +38,7 @@ let overtakeTimeout = null;
 // rather than on every simulation tick.
 const lowFuelWarned = ref(false);
 const lowBatteryWarned = ref(false);
+const overheatWarned = ref(false);
 
 // This function is our composable.
 export function useCar() {
@@ -45,6 +58,13 @@ export function useCar() {
     return "Worn";
   });
 
+  // Engine temperature condition label.
+  const tempStatus = computed(() => {
+    if (engineTemp.value >= CAR_SETTINGS.TEMP_CRITICAL) return "Critical";
+    if (engineTemp.value > CAR_SETTINGS.TEMP_OPTIMAL_MAX) return "Hot";
+    return "Optimal";
+  });
+
   // --- PRIVATE METHODS (LOGIC) ---
   const normalizedRpmRatio = () => {
     const rpmRatio =
@@ -53,7 +73,49 @@ export function useCar() {
     return Math.max(0, rpmRatio);
   };
 
+  const compoundConfig = () =>
+    Object.values(TIRE_COMPOUNDS).find(
+      (c) => c.label === tireCompound.value,
+    ) || TIRE_COMPOUNDS.MEDIUM;
+
+  const ersConfig = () =>
+    Object.values(ERS_MODES).find((m) => m.label === ersMode.value) ||
+    ERS_MODES.BALANCED;
+
+  const updateLapProgress = (ratio) => {
+    if (raceFinished.value) return;
+    // Distance accrues with RPM: idle still creeps, max RPM is fastest.
+    lapProgress.value += CAR_SETTINGS.LAP_DISTANCE * 0.1 * (0.5 + ratio);
+
+    while (lapProgress.value >= CAR_SETTINGS.LAP_DISTANCE) {
+      lapProgress.value -= CAR_SETTINGS.LAP_DISTANCE;
+      if (currentLap.value >= CAR_SETTINGS.TOTAL_LAPS) {
+        raceFinished.value = true;
+        lapProgress.value = 0;
+        ttsService.speak("Checkered flag. Race complete.");
+        return;
+      }
+      currentLap.value += 1;
+      ttsService.speak(`Lap ${currentLap.value}.`);
+    }
+  };
+
+  const updateTemperature = (ratio) => {
+    let next = engineTemp.value;
+    // Heat generated scales with RPM; cooling pulls back toward ambient.
+    const heat = CAR_SETTINGS.TEMP_RISE_RATE * ratio;
+    const cool = CAR_SETTINGS.TEMP_COOL_RATE * (1 - ratio);
+    next += heat - cool;
+    if (overtakeActive.value) next += CAR_SETTINGS.TEMP_OVERTAKE_PENALTY;
+    // Never drop below ambient.
+    engineTemp.value = parseFloat(
+      Math.max(CAR_SETTINGS.TEMP_AMBIENT, next).toFixed(1),
+    );
+  };
+
   const runSimulationTick = () => {
+    const ratio = normalizedRpmRatio();
+
     // Fuel consumption scales with the selected fuel mix and current RPM.
     const baseConsumptionRate =
       CAR_SETTINGS.FUEL_CONSUMPTION_RATE[fuelMix.value.toUpperCase()] ||
@@ -62,8 +124,7 @@ export function useCar() {
     // Multiplier ranges linearly from MIN (idle) to MAX (max RPM).
     const rpmMultiplier =
       CAR_SETTINGS.RPM_MULTIPLIER_MIN +
-      normalizedRpmRatio() *
-        (CAR_SETTINGS.RPM_MULTIPLIER_MAX - CAR_SETTINGS.RPM_MULTIPLIER_MIN);
+      ratio * (CAR_SETTINGS.RPM_MULTIPLIER_MAX - CAR_SETTINGS.RPM_MULTIPLIER_MIN);
     const totalConsumptionRate = baseConsumptionRate * rpmMultiplier;
 
     if (fuelLevel.value > 0) {
@@ -72,33 +133,44 @@ export function useCar() {
       );
     }
 
-    // Tires wear faster at higher RPM (1x at idle up to 2x at max RPM).
+    // Tires wear faster at higher RPM (1x at idle up to 2x at max RPM) and
+    // scaled by the fitted compound's wear factor.
     if (tireLife.value > 0) {
-      const wear = CAR_SETTINGS.TIRE_WEAR_RATE * (1 + normalizedRpmRatio());
+      const wear =
+        CAR_SETTINGS.TIRE_WEAR_RATE *
+        (1 + ratio) *
+        compoundConfig().wearFactor;
       tireLife.value = parseFloat(
         Math.max(0, tireLife.value - wear).toFixed(2),
       );
     }
 
-    // Battery recharges at a constant rate when below 100% (independent of RPM)
+    // Battery recharges at a rate scaled by the selected ERS mode.
     if (batteryLevel.value < 100) {
+      const recharge =
+        CAR_SETTINGS.BATTERY_RECHARGE_RATE * ersConfig().rechargeFactor;
       batteryLevel.value = parseFloat(
-        Math.min(
-          100,
-          batteryLevel.value + CAR_SETTINGS.BATTERY_RECHARGE_RATE,
-        ).toFixed(2),
+        Math.min(100, batteryLevel.value + recharge).toFixed(2),
       );
     }
 
+    updateTemperature(ratio);
+    updateLapProgress(ratio);
     checkWarnings();
 
     // Out of fuel: the engine stalls.
     if (fuelLevel.value <= 0 && engineStatus.value) {
       stallEngine();
+      return;
+    }
+
+    // Overheating: the engine cuts power until it cools below critical.
+    if (engineTemp.value >= CAR_SETTINGS.TEMP_CRITICAL && engineStatus.value) {
+      overheatEngine();
     }
   };
 
-  // Announce low fuel / battery once per threshold crossing.
+  // Announce low fuel / battery / overheat once per threshold crossing.
   const checkWarnings = () => {
     if (isLowFuel.value && !lowFuelWarned.value) {
       lowFuelWarned.value = true;
@@ -113,6 +185,13 @@ export function useCar() {
     } else if (!isLowBattery.value) {
       lowBatteryWarned.value = false;
     }
+
+    if (engineTemp.value > CAR_SETTINGS.TEMP_OPTIMAL_MAX && !overheatWarned.value) {
+      overheatWarned.value = true;
+      ttsService.speak("Warning. Engine temperature high.");
+    } else if (engineTemp.value <= CAR_SETTINGS.TEMP_OPTIMAL_MAX) {
+      overheatWarned.value = false;
+    }
   };
 
   const stallEngine = async () => {
@@ -121,6 +200,15 @@ export function useCar() {
     drsStatus.value = false;
     overtakeActive.value = false;
     await ttsService.speak("Out of fuel. Engine stalling.");
+  };
+
+  const overheatEngine = async () => {
+    // Power cut: drop revs to idle and disable boosting systems.
+    overheating.value = true;
+    drsStatus.value = false;
+    overtakeActive.value = false;
+    rpm.value = CAR_SETTINGS.RPM_IDLE;
+    await ttsService.speak("Engine overheating. Cutting power.");
   };
 
   // --- ACTIONS (PUBLIC METHODS) ---
@@ -139,6 +227,7 @@ export function useCar() {
 
     engineStatus.value = true;
     rpm.value = CAR_SETTINGS.RPM_IDLE;
+    overheating.value = false;
 
     const message = "Engine started.";
     await audioService.playSound("engineStart");
@@ -208,6 +297,8 @@ export function useCar() {
     if (overtakeActive.value) message = "Overtake is already active.";
     else if (!engineStatus.value)
       message = "Cannot activate overtake, engine is off.";
+    else if (overheating.value)
+      message = "Cannot activate overtake, engine is overheating.";
     else if (batteryLevel.value < CAR_SETTINGS.OVERTAKE_BATTERY_COST)
       message = "Not enough battery for overtake.";
 
@@ -248,8 +339,43 @@ export function useCar() {
     return message;
   };
 
+  const setErsMode = async (mode) => {
+    const key = String(mode).toUpperCase();
+    if (!ERS_MODES[key]) {
+      const message = `Unknown ERS mode: ${mode}.`;
+      await ttsService.speak(message);
+      return message;
+    }
+
+    ersMode.value = ERS_MODES[key].label;
+    const message = `ERS mode set to ${ERS_MODES[key].label}.`;
+    await ttsService.speak(message);
+    return message;
+  };
+
+  const setTireCompound = async (compound) => {
+    const key = String(compound).toUpperCase();
+    if (!TIRE_COMPOUNDS[key]) {
+      const message = `Unknown tire compound: ${compound}.`;
+      await ttsService.speak(message);
+      return message;
+    }
+
+    if (engineStatus.value) {
+      const message = "Pit the car before changing tire compound.";
+      await ttsService.speak(message);
+      return message;
+    }
+
+    tireCompound.value = TIRE_COMPOUNDS[key].label;
+    tireLife.value = 100;
+    const message = `${TIRE_COMPOUNDS[key].label} tires fitted.`;
+    await ttsService.speak(message);
+    return message;
+  };
+
   const checkTireStatus = async () => {
-    const message = `Tires are ${tireStatus.value.toLowerCase()} at ${tireLife.value} percent.`;
+    const message = `${tireCompound.value} tires are ${tireStatus.value.toLowerCase()} at ${tireLife.value} percent.`;
     await ttsService.speak(message);
     return message;
   };
@@ -268,6 +394,29 @@ export function useCar() {
     return message;
   };
 
+  const getTempStatus = async () => {
+    const message = `Engine temperature is ${engineTemp.value} degrees, ${tempStatus.value.toLowerCase()}.`;
+    await ttsService.speak(message);
+    return message;
+  };
+
+  const getLapStatus = async () => {
+    const message = raceFinished.value
+      ? "Race complete."
+      : `On lap ${currentLap.value} of ${CAR_SETTINGS.TOTAL_LAPS}.`;
+    await ttsService.speak(message);
+    return message;
+  };
+
+  const getHelp = async () => {
+    const message =
+      "Available commands: start engine, stop engine, D R S, overtake, " +
+      "fuel mix, E R S mode, tire compound, pit stop, lap status, " +
+      "temperature, fuel, battery, and reset.";
+    await ttsService.speak(message);
+    return message;
+  };
+
   const performPitStop = async () => {
     await stopEngine(); // Use existing actions
     await new Promise((resolve) =>
@@ -277,8 +426,11 @@ export function useCar() {
     fuelLevel.value = 100;
     batteryLevel.value = 100;
     tireLife.value = 100;
+    engineTemp.value = CAR_SETTINGS.TEMP_AMBIENT;
+    overheating.value = false;
     lowFuelWarned.value = false;
     lowBatteryWarned.value = false;
+    overheatWarned.value = false;
 
     await startEngine();
     return "Pit stop complete. Car serviced.";
@@ -293,11 +445,19 @@ export function useCar() {
     drsStatus.value = false;
     overtakeActive.value = false;
     tireLife.value = 100;
+    tireCompound.value = TIRE_COMPOUNDS.MEDIUM.label;
     fuelLevel.value = 100;
     batteryLevel.value = 100;
     fuelMix.value = FUEL_MIXES.STANDARD;
+    ersMode.value = ERS_MODES.BALANCED.label;
+    engineTemp.value = CAR_SETTINGS.TEMP_AMBIENT;
+    overheating.value = false;
+    currentLap.value = 1;
+    lapProgress.value = 0;
+    raceFinished.value = false;
     lowFuelWarned.value = false;
     lowBatteryWarned.value = false;
+    overheatWarned.value = false;
 
     const message = "Race reset. All systems nominal.";
     await ttsService.speak(message);
@@ -330,11 +490,19 @@ export function useCar() {
     drsStatus,
     overtakeActive,
     tireLife,
+    tireCompound,
     fuelLevel,
     batteryLevel,
     fuelMix,
+    ersMode,
+    engineTemp,
+    overheating,
+    currentLap,
+    lapProgress,
+    raceFinished,
     // Getters
     tireStatus,
+    tempStatus,
     isLowBattery,
     isLowFuel,
     // Actions
@@ -344,9 +512,14 @@ export function useCar() {
     deactivateDrs,
     activateOvertake,
     setFuelMix,
+    setErsMode,
+    setTireCompound,
     checkTireStatus,
     getFuelStatus,
     getBatteryStatus,
+    getTempStatus,
+    getLapStatus,
+    getHelp,
     performPitStop,
     resetRace,
     // Internals exposed for testing

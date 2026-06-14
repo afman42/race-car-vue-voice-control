@@ -51,6 +51,30 @@ describe("matchCommand", () => {
     expect(matchCommand("battery status")).toBe("batteryStatus");
   });
 
+  it("matches help", () => {
+    expect(matchCommand("help")).toBe("help");
+    expect(matchCommand("what can i say")).toBe("help");
+  });
+
+  it("matches tire compounds before the generic tire query", () => {
+    expect(matchCommand("soft tire")).toBe("tireSoft");
+    expect(matchCommand("fit medium compound")).toBe("tireMedium");
+    expect(matchCommand("hard tyre")).toBe("tireHard");
+  });
+
+  it("matches ERS modes", () => {
+    expect(matchCommand("hotlap")).toBe("ersHotlap");
+    expect(matchCommand("ers charge")).toBe("ersCharge");
+    expect(matchCommand("balanced mode")).toBe("ersBalanced");
+  });
+
+  it("matches lap and temperature queries", () => {
+    expect(matchCommand("what lap")).toBe("lapStatus");
+    expect(matchCommand("lap status")).toBe("lapStatus");
+    expect(matchCommand("engine temperature")).toBe("tempStatus");
+    expect(matchCommand("temp status")).toBe("tempStatus");
+  });
+
   it("does not misfire on single stray letters", () => {
     // Previously 't' matched tire and 'dr' matched DRS.
     expect(matchCommand("t")).toBeNull();

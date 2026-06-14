@@ -6,6 +6,7 @@ import { nextTick } from "vue";
 import RaceControl from "./RaceControl.vue";
 import { useCar } from "@/composables/useCar";
 import speechService from "@/services/speechRecognitionService";
+import { CAR_SETTINGS } from "@/config";
 
 // audioService and textToSpeechService are mocked globally in vitest.setup.js
 
@@ -42,6 +43,9 @@ describe("RaceControl.vue", () => {
     expect(text).toContain("Race Car Voice Control");
     expect(text).toContain("OFF"); // engine
     expect(text).toContain("Standard"); // fuel mix tile
+    expect(text).toContain("Balanced"); // ERS mode tile
+    expect(text).toContain("Medium"); // tire compound
+    expect(text).toContain(`Lap 1 / ${CAR_SETTINGS.TOTAL_LAPS}`); // lap banner
   });
 
   it("toggling the radio starts listening and sets aria-pressed", async () => {
@@ -111,5 +115,42 @@ describe("RaceControl.vue", () => {
     const wrapper = mount(RaceControl);
     wrapper.unmount();
     expect(speechService.stopListening).toHaveBeenCalled();
+  });
+
+  describe("manual controls (keyboard fallback)", () => {
+    it("renders a button grid", () => {
+      const wrapper = mount(RaceControl);
+      const buttons = wrapper.findAll(".ctrl-button");
+      expect(buttons.length).toBeGreaterThan(0);
+    });
+
+    it("starting the engine via a manual button works without voice", async () => {
+      const wrapper = mount(RaceControl);
+      const { engineStatus } = useCar();
+
+      const startButton = wrapper
+        .findAll(".ctrl-button")
+        .find((b) => b.text() === "Start Engine");
+      await startButton.trigger("click");
+      await flush();
+
+      expect(engineStatus.value).toBe(true);
+      // speech recognition was never engaged
+      expect(speechService.startListening).not.toHaveBeenCalled();
+    });
+
+    it("changes ERS mode via a manual button", async () => {
+      const wrapper = mount(RaceControl);
+      const { ersMode } = useCar();
+
+      const chargeButton = wrapper
+        .findAll(".ctrl-button")
+        .find((b) => b.text() === "ERS Charge");
+      await chargeButton.trigger("click");
+      await flush();
+
+      expect(ersMode.value).toBe("Charge");
+      expect(wrapper.text()).toContain("Charge");
+    });
   });
 });

@@ -21,6 +21,11 @@
       {{ isListening ? "Stop Radio" : "Open Radio Channel" }}
     </button>
 
+    <div class="lap-banner" role="status" aria-live="polite">
+      <span v-if="raceFinished">Race Complete</span>
+      <span v-else>Lap {{ currentLap }} / {{ CAR_SETTINGS.TOTAL_LAPS }}</span>
+    </div>
+
     <div class="gauge-container">
       <svg
         class="rpm-gauge"
@@ -78,7 +83,9 @@
       </div>
       <div class="display-item">
         <h2>Tires</h2>
-        <p class="status info">{{ tireStatus }} ({{ tireLife.toFixed(0) }}%)</p>
+        <p class="status info">
+          {{ tireCompound }} - {{ tireStatus }} ({{ tireLife.toFixed(0) }}%)
+        </p>
       </div>
       <div class="display-item">
         <h2>Fuel Level</h2>
@@ -95,6 +102,39 @@
       <div class="display-item">
         <h2>Fuel Mix</h2>
         <p class="status info">{{ fuelMix }}</p>
+      </div>
+      <div class="display-item">
+        <h2>ERS Mode</h2>
+        <p class="status info">{{ ersMode }}</p>
+      </div>
+      <div class="display-item">
+        <h2>Engine Temp</h2>
+        <p
+          :class="[
+            'status',
+            tempStatus === 'Critical'
+              ? 'off'
+              : tempStatus === 'Hot'
+                ? 'info'
+                : 'on',
+          ]"
+        >
+          {{ engineTemp.toFixed(0) }}&deg;C
+        </p>
+      </div>
+    </div>
+
+    <div class="manual-controls">
+      <h3>Manual Controls</h3>
+      <div class="button-grid">
+        <button
+          v-for="ctrl in manualControls"
+          :key="ctrl.label"
+          class="ctrl-button"
+          @click="runCommand(ctrl.command)"
+        >
+          {{ ctrl.label }}
+        </button>
       </div>
     </div>
 
@@ -120,9 +160,15 @@ const {
   overtakeActive,
   tireStatus,
   tireLife,
+  tireCompound,
   fuelLevel,
   batteryLevel,
   fuelMix,
+  ersMode,
+  engineTemp,
+  tempStatus,
+  currentLap,
+  raceFinished,
   isLowBattery,
   isLowFuel,
   startEngine,
@@ -131,9 +177,14 @@ const {
   deactivateDrs,
   activateOvertake,
   setFuelMix,
+  setErsMode,
+  setTireCompound,
   checkTireStatus,
   getFuelStatus,
   getBatteryStatus,
+  getTempStatus,
+  getLapStatus,
+  getHelp,
   performPitStop,
   resetRace,
 } = useCar();
@@ -170,19 +221,66 @@ const rpmNeedleOffset = computed(() => {
 
 // Maps command keys (from the router) to the composable action that runs them.
 const commandActions = {
+  help: getHelp,
   pitStop: performPitStop,
   reset: resetRace,
   startEngine,
   stopEngine,
+  tireSoft: () => setTireCompound("SOFT"),
+  tireMedium: () => setTireCompound("MEDIUM"),
+  tireHard: () => setTireCompound("HARD"),
   fuelMixLean: () => setFuelMix("LEAN"),
   fuelMixRich: () => setFuelMix("RICH"),
   fuelMixStandard: () => setFuelMix("STANDARD"),
+  ersHotlap: () => setErsMode("HOTLAP"),
+  ersCharge: () => setErsMode("CHARGE"),
+  ersBalanced: () => setErsMode("BALANCED"),
   overtake: activateOvertake,
   deactivateDrs,
   activateDrs,
+  lapStatus: getLapStatus,
+  tempStatus: getTempStatus,
   tireStatus: checkTireStatus,
   fuelStatus: getFuelStatus,
   batteryStatus: getBatteryStatus,
+};
+
+// #8: keyboard/click fallback so the app is usable without a microphone.
+const manualControls = [
+  { label: "Start Engine", command: "startEngine" },
+  { label: "Stop Engine", command: "stopEngine" },
+  { label: "DRS On", command: "activateDrs" },
+  { label: "DRS Off", command: "deactivateDrs" },
+  { label: "Overtake", command: "overtake" },
+  { label: "Pit Stop", command: "pitStop" },
+  { label: "Mix Lean", command: "fuelMixLean" },
+  { label: "Mix Standard", command: "fuelMixStandard" },
+  { label: "Mix Rich", command: "fuelMixRich" },
+  { label: "ERS Hotlap", command: "ersHotlap" },
+  { label: "ERS Balanced", command: "ersBalanced" },
+  { label: "ERS Charge", command: "ersCharge" },
+  { label: "Soft Tires", command: "tireSoft" },
+  { label: "Medium Tires", command: "tireMedium" },
+  { label: "Hard Tires", command: "tireHard" },
+  { label: "Lap Status", command: "lapStatus" },
+  { label: "Temp Status", command: "tempStatus" },
+  { label: "Reset", command: "reset" },
+];
+
+/**
+ * Run a resolved command key against the composable and update the UI.
+ * Shared by both voice dispatch and the manual control buttons.
+ */
+const runCommand = async (command) => {
+  if (!command || !commandActions[command]) {
+    return `Command not recognized.`;
+  }
+  const message = await commandActions[command]();
+  if (command === "overtake" && overtakeActive.value) {
+    startOvertakeCountdown();
+  }
+  statusMessage.value = message;
+  return message;
 };
 
 /**
@@ -217,20 +315,13 @@ const processCommand = async (transcript) => {
   isListening.value = false;
 
   const command = matchCommand(transcript);
-  let message;
 
   if (command && commandActions[command]) {
-    message = await commandActions[command]();
-    if (command === "overtake" && overtakeActive.value) {
-      startOvertakeCountdown();
-    }
+    await runCommand(command);
   } else {
     // #5: tell the user we heard them but didn't understand the command.
-    message = `Command not recognized: "${transcript}". Please repeat.`;
+    statusMessage.value = `Command not recognized: "${transcript}". Please repeat.`;
   }
-
-  // Update the UI with the final message from the action
-  statusMessage.value = message;
 
   // Restart the listening loop if not manually stopped
   setTimeout(() => {
@@ -401,6 +492,51 @@ h1 {
   background-color: #00ffff;
   border-radius: 3px;
   transition: width 0.1s linear;
+}
+
+.lap-banner {
+  text-align: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #00ffff;
+  letter-spacing: 1px;
+  margin-bottom: 1.5rem;
+}
+
+.manual-controls {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #444;
+}
+.manual-controls h3 {
+  color: #aaa;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+.button-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.5rem;
+}
+.ctrl-button {
+  padding: 8px;
+  font-size: 0.8rem;
+  font-family: "Orbitron", sans-serif;
+  color: #e0e0e0;
+  background-color: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s;
+}
+.ctrl-button:hover {
+  background-color: #333;
+  border-color: #00ffff;
+  color: #00ffff;
 }
 
 .gauge-container {
