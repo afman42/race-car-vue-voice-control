@@ -130,4 +130,30 @@ describe("useCar - runSimulationTick", () => {
     expect(rpm.value).toBe(0);
     expect(ttsService.speak).toHaveBeenCalledWith("Out of fuel. Engine stalling.");
   });
+
+  it("does not recharge the battery beyond 100%", () => {
+    const { runSimulationTick, batteryLevel, rpm, engineStatus } = useCar();
+    engineStatus.value = true;
+    rpm.value = CAR_SETTINGS.RPM_MAX;
+
+    // Start at 100% and run several ticks — should stay at 100.
+    batteryLevel.value = 100;
+    for (let i = 0; i < 10; i++) runSimulationTick();
+
+    expect(batteryLevel.value).toBe(100);
+  });
+
+  it("still consumes fuel while the engine runs after the race finishes", () => {
+    const { runSimulationTick, fuelLevel, rpm, engineStatus, raceFinished } =
+      useCar();
+    engineStatus.value = true;
+    rpm.value = CAR_SETTINGS.RPM_MAX;
+    raceFinished.value = true;
+
+    const before = fuelLevel.value;
+    runSimulationTick();
+
+    // Fuel should still decrease because the engine is still running.
+    expect(fuelLevel.value).toBeLessThan(before);
+  });
 });

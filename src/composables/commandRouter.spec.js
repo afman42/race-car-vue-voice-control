@@ -80,4 +80,32 @@ describe("matchCommand", () => {
     expect(matchCommand("t")).toBeNull();
     expect(matchCommand("dr")).toBeNull();
   });
+
+  describe("locale-specific matching", () => {
+    it("matches Indonesian keywords when locale is 'id'", () => {
+      expect(matchCommand("nyalakan mesin", "id")).toBe("startEngine");
+      expect(matchCommand("matikan mesin", "id")).toBe("stopEngine");
+      expect(matchCommand("bantuan", "id")).toBe("help");
+      expect(matchCommand("ban lunak", "id")).toBe("tireSoft");
+      expect(matchCommand("salip", "id")).toBe("overtake");
+      expect(matchCommand("atur ulang", "id")).toBe("reset");
+    });
+
+    it("falls back to English keywords for Indonesian locale", () => {
+      // English keywords should still work when locale is Indonesian.
+      expect(matchCommand("start engine", "id")).toBe("startEngine");
+      expect(matchCommand("help", "id")).toBe("help");
+      expect(matchCommand("drs", "id")).toBe("activateDrs");
+      expect(matchCommand("reset", "id")).toBe("reset");
+    });
+
+    it("falls back to English for unknown locale codes", () => {
+      expect(matchCommand("start engine", "fr")).toBe("startEngine");
+      expect(matchCommand("help", "de")).toBe("help");
+    });
+
+    it("returns null for unrecognized Indonesian input", () => {
+      expect(matchCommand("makan nasi goreng", "id")).toBeNull();
+    });
+  });
 });

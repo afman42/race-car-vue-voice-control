@@ -129,6 +129,16 @@ describe("useCar Composable", () => {
   });
 
   describe("overtake", () => {
+    it("should fail if engine is off", async () => {
+      const { activateOvertake, overtakeActive } = useCar();
+
+      const message = await activateOvertake();
+
+      expect(message).toBe("Cannot activate overtake, engine is off.");
+      expect(overtakeActive.value).toBe(false);
+      expect(audioService.playSound).not.toHaveBeenCalled();
+    });
+
     it("should fail if battery is too low", async () => {
       const { startEngine, activateOvertake, batteryLevel } = useCar();
       await startEngine();

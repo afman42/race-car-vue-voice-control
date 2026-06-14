@@ -1,6 +1,6 @@
 // src/composables/useCar.js
 
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onUnmounted, getCurrentInstance } from "vue";
 import {
   CAR_SETTINGS,
   FUEL_MIXES,
@@ -223,6 +223,18 @@ export function useCar() {
     await ttsService.speak(t("msg.overheatCut"));
   };
 
+  // --- HELPERS ---
+
+  /**
+   * Translate a message key, speak it via TTS, and return the translated string.
+   * Reduces repetitive t() + speak() + return boilerplate across status queries.
+   */
+  const speakAndReturn = async (key, params) => {
+    const msg = t(key, params);
+    await ttsService.speak(msg);
+    return msg;
+  };
+
   // --- ACTIONS (PUBLIC METHODS) ---
   const startEngine = async () => {
     if (engineStatus.value) {
@@ -384,55 +396,36 @@ export function useCar() {
     return message;
   };
 
-  const checkTireStatus = async () => {
-    const message = t("msg.tireStatus", {
+  const checkTireStatus = () =>
+    speakAndReturn("msg.tireStatus", {
       compound: tireCompound.value,
       status: statusWord(tireStatus.value),
       life: tireLife.value,
     });
-    await ttsService.speak(message);
-    return message;
+
+  const getFuelStatus = () =>
+    speakAndReturn("msg.fuelStatus", { level: fuelLevel.value });
+
+  const getBatteryStatus = () => {
+    const key = isLowBattery.value ? "msg.batteryCritical" : "msg.batteryStatus";
+    return speakAndReturn(key, { level: batteryLevel.value });
   };
 
-  const getFuelStatus = async () => {
-    const message = t("msg.fuelStatus", { level: fuelLevel.value });
-    await ttsService.speak(message);
-    return message;
-  };
-
-  const getBatteryStatus = async () => {
-    const message = isLowBattery.value
-      ? t("msg.batteryCritical", { level: batteryLevel.value })
-      : t("msg.batteryStatus", { level: batteryLevel.value });
-    await ttsService.speak(message);
-    return message;
-  };
-
-  const getTempStatus = async () => {
-    const message = t("msg.tempStatus", {
+  const getTempStatus = () =>
+    speakAndReturn("msg.tempStatus", {
       temp: engineTemp.value,
       status: statusWord(tempStatus.value),
     });
-    await ttsService.speak(message);
-    return message;
+
+  const getLapStatus = () => {
+    if (raceFinished.value) return speakAndReturn("msg.raceComplete");
+    return speakAndReturn("msg.lapStatus", {
+      lap: currentLap.value,
+      total: CAR_SETTINGS.TOTAL_LAPS,
+    });
   };
 
-  const getLapStatus = async () => {
-    const message = raceFinished.value
-      ? t("msg.raceComplete")
-      : t("msg.lapStatus", {
-          lap: currentLap.value,
-          total: CAR_SETTINGS.TOTAL_LAPS,
-        });
-    await ttsService.speak(message);
-    return message;
-  };
-
-  const getHelp = async () => {
-    const message = t("msg.help");
-    await ttsService.speak(message);
-    return message;
-  };
+  const getHelp = () => speakAndReturn("msg.help");
 
   const performPitStop = async () => {
     await stopEngine(); // Use existing actions
@@ -498,6 +491,18 @@ export function useCar() {
     },
     { immediate: true },
   );
+
+  // Clean up the simulation interval when the hosting component unmounts.
+  // Guard with getCurrentInstance so this is a no-op when called outside
+  // a component's setup (e.g. in test suites).
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      if (simulationInterval) {
+        clearInterval(simulationInterval);
+        simulationInterval = null;
+      }
+    });
+  }
 
   // --- EXPOSE PUBLIC API ---
   return {
