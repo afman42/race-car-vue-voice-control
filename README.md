@@ -1,6 +1,6 @@
 # Race Car Voice Control
 
-A Vue.js application that allows you to control a virtual race car using voice commands. Experience the thrill of Formula 1 racing through voice-controlled commands in your browser.
+A Vue.js application that allows you to control a virtual race car using voice commands. Experience the thrill of Formula 1 racing through voice-controlled commands in your browser — now with **bilingual support** (English & Indonesian).
 
 ## Features
 
@@ -18,45 +18,80 @@ A Vue.js application that allows you to control a virtual race car using voice c
 - **Radio Warnings**: Automatic voice alerts for critical fuel, battery, and engine temperature
 - **Overtake Countdown**: Visual bar showing the remaining overtake boost
 - **Audio Feedback**: Sound effects and voice responses for all actions
+- **Bilingual Support**: Full English and Indonesian localization — UI text, voice responses, and voice commands all switch with the selected language
+- **Language Persistence**: Your language choice is saved to localStorage
 - **Accessible UI**: ARIA roles and live regions for screen-reader support
+
+## Language Support
+
+The app supports **English** (default) and **Bahasa Indonesia**. A language dropdown in the top-right corner lets you switch at any time.
+
+When you switch languages:
+- All on-screen labels and buttons update immediately
+- Voice responses (TTS) switch to the selected language
+- Voice command keywords switch to the selected language
+- Speech recognition language changes to match
 
 ## How to Use
 
-1. Click the "Open Radio Channel" button to start listening (or use the Manual Controls)
+1. Click the "Open Radio Channel" / "Buka Saluran Radio" button to start listening (or use the Manual Controls)
 2. Speak clearly and wait for audio feedback
 3. Use any of the voice commands listed below
 4. Watch the dashboard update in real-time
 
 ## Voice Commands
 
-- **Help**: "help", "what can I say", or "commands"
-- **Engine**: "start engine", "stop engine", or "shut down"
-- **DRS**: "drs" / "activate drs" to enable; "drs off", "close drs", or "disable drs" to disable
-- **Overtake**: "overtake" or "over take"
-- **Fuel Mix**: "lean mix", "rich mix", or "standard mix"
-- **ERS Mode**: "hotlap", "charge mode", or "balanced mode"
-- **Tire Compound** (in the pits): "soft tire", "medium tire", or "hard tire"
-- **Tires**: "tire status", "check tire", or "tyre"
-- **Fuel**: "fuel status", "tank status", or "gas"
-- **Battery**: "battery status" or "battery"
-- **Temperature**: "temperature", "engine temp", or "temp status"
-- **Lap**: "lap status", "what lap", or "current lap"
-- **Pit Stop**: "pit stop", "box box", or "pit now"
-- **Reset**: "reset", "new race", or "restart"
+### English
+
+| Category | Commands |
+|---|---|
+| **Help** | "help", "what can I say", "commands" |
+| **Engine** | "start engine", "stop engine", "shut down" |
+| **DRS** | "drs" / "activate drs" to enable; "drs off", "close drs", "disable drs" to disable |
+| **Overtake** | "overtake", "over take" |
+| **Fuel Mix** | "lean mix", "rich mix", "standard mix" |
+| **ERS Mode** | "hotlap", "charge mode", "balanced mode" |
+| **Tire Compound** (in pits) | "soft tire", "medium tire", "hard tire" |
+| **Tires** | "tire status", "check tire", "tyre" |
+| **Fuel** | "fuel status", "tank status", "gas" |
+| **Battery** | "battery status", "battery" |
+| **Temperature** | "temperature", "engine temp", "temp status" |
+| **Lap** | "lap status", "what lap", "current lap" |
+| **Pit Stop** | "pit stop", "box box", "pit now" |
+| **Reset** | "reset", "new race", "restart" |
+
+### Bahasa Indonesia
+
+| Kategori | Perintah |
+|---|---|
+| **Bantuan** | "bantuan", "tolong", "perintah apa", "daftar perintah" |
+| **Mesin** | "nyalakan mesin", "hidupkan mesin", "start mesin", "matikan mesin", "stop mesin" |
+| **DRS** | "drs", "drs mati", "tutup drs", "matikan drs" |
+| **Salip** | "salip", "menyalip", "nyalip" |
+| **Campuran BBM** | "campuran irit", "mode irit", "campuran kaya", "mode kaya", "campuran standar", "mode standar" |
+| **Mode ERS** | "ers hotlap", "mode hotlap", "mode isi", "ers isi", "isi baterai", "mode seimbang", "ers seimbang" |
+| **Jenis Ban** (di pit) | "ban lunak", "ban sedang", "ban medium", "ban keras" |
+| **Ban** | "ban", "status ban" |
+| **Bahan Bakar** | "bahan bakar", "bensin", "tangki" |
+| **Baterai** | "baterai" |
+| **Suhu** | "suhu", "temperatur", "status suhu" |
+| **Lap** | "status lap", "lap berapa", "lap" |
+| **Pit Stop** | "pit stop", "masuk pit", "ke pit" |
+| **Atur Ulang** | "atur ulang", "balapan baru", "mulai ulang", "reset" |
 
 ## Technical Details
 
 - Fuel consumption scales with RPM and the selected fuel mix
-- Tires wear each tick while the engine runs, degrading Optimal -> Used -> Worn, scaled by compound
+- Tires wear each tick while the engine runs, degrading Optimal → Used → Worn, scaled by compound
 - Battery recharge rate is scaled by the ERS deployment mode
-- Engine temperature rises with RPM and overtaking, cools toward ambient otherwise; crossing the
-  critical threshold cuts power until the car is pitted
+- Engine temperature rises with RPM and overtaking, cools toward ambient otherwise; crossing the critical threshold cuts power until the car is pitted
 - Laps advance as accumulated distance (driven by RPM) builds up; the race ends after the final lap
 - The engine stalls automatically when the fuel tank empties
 - Critical fuel, battery, and temperature warnings are announced once per threshold crossing
 - Engine must be running to activate DRS and overtake modes; tire compounds change only in the pits
 - A pit stop refuels, recharges, cools the engine, and fits fresh tires
 - All voice recognition happens in the browser using the Web Speech API
+- All i18n messages live in `src/i18n.js` — easy to extend with new locales
 - Tunable values live in `src/config.js`
 
 ## Project Structure
@@ -64,6 +99,7 @@ A Vue.js application that allows you to control a virtual race car using voice c
 ```
 src/
 ├── config.js                          car simulation constants, fuel mixes, compounds, ERS modes
+├── i18n.js                            internationalization engine (English + Indonesian)
 ├── main.js                            app bootstrap
 ├── App.vue                            root component
 ├── components/
@@ -71,7 +107,7 @@ src/
 │   └── RaceControl.spec.js            component tests
 ├── composables/
 │   ├── useCar.js                      core car state and actions (singleton)
-│   ├── commandRouter.js               maps transcripts to command keys
+│   ├── commandRouter.js               maps transcripts to command keys (multi-language)
 │   ├── useCar.spec.js                 action/state tests
 │   ├── useCarSimulation.spec.js       simulation-tick tests (fuel, tire wear, stall)
 │   ├── useCarFeatures.spec.js         compound, ERS, temperature, lap, help tests
@@ -108,3 +144,4 @@ pnpm test:run   # single run
 - Clear browser cache if experiencing issues
 - For best results, use in a quiet environment
 - Some commands require the engine to be running first
+- Language preference is saved across sessions via localStorage

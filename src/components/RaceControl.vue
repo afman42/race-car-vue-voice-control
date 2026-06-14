@@ -1,12 +1,30 @@
 <template>
   <div class="race-control-panel">
-    <h1>Race Car Voice Control</h1>
+    <div class="header-row">
+      <h1>{{ t("ui.title") }}</h1>
+      <label class="lang-select">
+        <span class="visually-hidden">{{ t("ui.language") }}</span>
+        <select
+          :value="locale"
+          @change="onLocaleChange"
+          :aria-label="t('ui.language')"
+        >
+          <option
+            v-for="(meta, code) in SUPPORTED_LOCALES"
+            :key="code"
+            :value="code"
+          >
+            {{ meta.label }}
+          </option>
+        </select>
+      </label>
+    </div>
 
     <div class="status-panel">
       <div
         :class="['light', { active: isListening }]"
         role="status"
-        :aria-label="isListening ? 'Radio channel open' : 'Radio channel closed'"
+        :aria-label="isListening ? t('ui.radioOpen') : t('ui.radioClosed')"
       ></div>
       <p class="status-text" role="status" aria-live="polite">
         {{ statusMessage }}
@@ -18,12 +36,14 @@
       class="control-button"
       :aria-pressed="isListening"
     >
-      {{ isListening ? "Stop Radio" : "Open Radio Channel" }}
+      {{ isListening ? t("ui.stopRadio") : t("ui.openRadio") }}
     </button>
 
     <div class="lap-banner" role="status" aria-live="polite">
-      <span v-if="raceFinished">Race Complete</span>
-      <span v-else>Lap {{ currentLap }} / {{ CAR_SETTINGS.TOTAL_LAPS }}</span>
+      <span v-if="raceFinished">{{ t("ui.raceComplete") }}</span>
+      <span v-else>{{
+        t("ui.lap", { lap: currentLap, total: CAR_SETTINGS.TOTAL_LAPS })
+      }}</span>
     </div>
 
     <div class="gauge-container">
@@ -50,21 +70,21 @@
 
     <div class="dashboard">
       <div class="display-item">
-        <h2>Engine</h2>
+        <h2>{{ t("ui.engine") }}</h2>
         <p :class="['status', engineStatus ? 'on' : 'off']">
-          {{ engineStatus ? "ON" : "OFF" }}
+          {{ engineStatus ? t("ui.on") : t("ui.off") }}
         </p>
       </div>
       <div class="display-item">
-        <h2>DRS</h2>
+        <h2>{{ t("ui.drs") }}</h2>
         <p :class="['status', drsStatus ? 'on' : 'off']">
-          {{ drsStatus ? "ENABLED" : "DISABLED" }}
+          {{ drsStatus ? t("ui.enabled") : t("ui.disabled") }}
         </p>
       </div>
       <div class="display-item">
-        <h2>Overtake</h2>
+        <h2>{{ t("ui.overtake") }}</h2>
         <p :class="['status', overtakeActive ? 'on' : 'off']">
-          {{ overtakeActive ? "ACTIVE" : "READY" }}
+          {{ overtakeActive ? t("ui.active") : t("ui.ready") }}
         </p>
         <div
           v-if="overtakeActive"
@@ -73,7 +93,7 @@
           :aria-valuenow="Math.round(overtakeRemaining)"
           aria-valuemin="0"
           :aria-valuemax="100"
-          aria-label="Overtake time remaining"
+          :aria-label="t('ui.overtake')"
         >
           <div
             class="countdown-fill"
@@ -82,33 +102,33 @@
         </div>
       </div>
       <div class="display-item">
-        <h2>Tires</h2>
+        <h2>{{ t("ui.tires") }}</h2>
         <p class="status info">
           {{ tireCompound }} - {{ tireStatus }} ({{ tireLife.toFixed(0) }}%)
         </p>
       </div>
       <div class="display-item">
-        <h2>Fuel Level</h2>
+        <h2>{{ t("ui.fuelLevel") }}</h2>
         <p :class="['status', isLowFuel ? 'off' : 'info']">
           {{ fuelLevel.toFixed(1) }}%
         </p>
       </div>
       <div class="display-item">
-        <h2>Battery</h2>
+        <h2>{{ t("ui.battery") }}</h2>
         <p :class="['status', !isLowBattery ? 'on' : 'off']">
           {{ batteryLevel.toFixed(1) }}%
         </p>
       </div>
       <div class="display-item">
-        <h2>Fuel Mix</h2>
+        <h2>{{ t("ui.fuelMix") }}</h2>
         <p class="status info">{{ fuelMix }}</p>
       </div>
       <div class="display-item">
-        <h2>ERS Mode</h2>
+        <h2>{{ t("ui.ersMode") }}</h2>
         <p class="status info">{{ ersMode }}</p>
       </div>
       <div class="display-item">
-        <h2>Engine Temp</h2>
+        <h2>{{ t("ui.engineTemp") }}</h2>
         <p
           :class="[
             'status',
@@ -125,31 +145,33 @@
     </div>
 
     <div class="manual-controls">
-      <h3>Manual Controls</h3>
+      <h3>{{ t("ui.manualControls") }}</h3>
       <div class="button-grid">
         <button
           v-for="ctrl in manualControls"
-          :key="ctrl.label"
+          :key="ctrl.command"
           class="ctrl-button"
           @click="runCommand(ctrl.command)"
         >
-          {{ ctrl.label }}
+          {{ t(ctrl.labelKey) }}
         </button>
       </div>
     </div>
 
     <div class="transcript-log">
-      <h3>Last Command Heard:</h3>
+      <h3>{{ t("ui.lastCommand") }}</h3>
       <p aria-live="polite">{{ lastTranscript }}</p>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useCar } from "@/composables/useCar";
 import { matchCommand } from "@/composables/commandRouter";
 import speechService from "@/services/speechRecognitionService";
+import ttsService from "@/services/textToSpeechService";
+import { useI18n } from "@/i18n";
 import { CAR_SETTINGS } from "@/config";
 
 // --- 1. Get All Car Logic & State from the Composable ---
@@ -189,10 +211,35 @@ const {
   resetRace,
 } = useCar();
 
+// --- i18n ---
+const { t, locale, speechLang, setLocale, SUPPORTED_LOCALES } = useI18n();
+
+// Keep both speech services in sync with the active locale, and update the
+// idle status message so it follows the language too.
+watch(
+  speechLang,
+  (lang) => {
+    speechService.setLanguage(lang);
+    ttsService.setLanguage(lang);
+  },
+  { immediate: true },
+);
+
+const onLocaleChange = (event) => {
+  setLocale(event.target.value);
+};
+
 // --- 2. UI-Only State (Specific to this component) ---
 const isListening = ref(false);
-const statusMessage = ref("Open Radio Channel");
+const statusMessage = ref(t("ui.openRadio"));
 const lastTranscript = ref("...");
+
+// Keep the idle status text localized when the language changes while idle.
+watch(locale, () => {
+  if (!isListening.value) {
+    statusMessage.value = t("ui.openRadio");
+  }
+});
 
 // Overtake countdown (percent remaining, 100 -> 0).
 const overtakeRemaining = ref(0);
@@ -247,24 +294,24 @@ const commandActions = {
 
 // #8: keyboard/click fallback so the app is usable without a microphone.
 const manualControls = [
-  { label: "Start Engine", command: "startEngine" },
-  { label: "Stop Engine", command: "stopEngine" },
-  { label: "DRS On", command: "activateDrs" },
-  { label: "DRS Off", command: "deactivateDrs" },
-  { label: "Overtake", command: "overtake" },
-  { label: "Pit Stop", command: "pitStop" },
-  { label: "Mix Lean", command: "fuelMixLean" },
-  { label: "Mix Standard", command: "fuelMixStandard" },
-  { label: "Mix Rich", command: "fuelMixRich" },
-  { label: "ERS Hotlap", command: "ersHotlap" },
-  { label: "ERS Balanced", command: "ersBalanced" },
-  { label: "ERS Charge", command: "ersCharge" },
-  { label: "Soft Tires", command: "tireSoft" },
-  { label: "Medium Tires", command: "tireMedium" },
-  { label: "Hard Tires", command: "tireHard" },
-  { label: "Lap Status", command: "lapStatus" },
-  { label: "Temp Status", command: "tempStatus" },
-  { label: "Reset", command: "reset" },
+  { labelKey: "btn.startEngine", command: "startEngine" },
+  { labelKey: "btn.stopEngine", command: "stopEngine" },
+  { labelKey: "btn.drsOn", command: "activateDrs" },
+  { labelKey: "btn.drsOff", command: "deactivateDrs" },
+  { labelKey: "btn.overtake", command: "overtake" },
+  { labelKey: "btn.pitStop", command: "pitStop" },
+  { labelKey: "btn.mixLean", command: "fuelMixLean" },
+  { labelKey: "btn.mixStandard", command: "fuelMixStandard" },
+  { labelKey: "btn.mixRich", command: "fuelMixRich" },
+  { labelKey: "btn.ersHotlap", command: "ersHotlap" },
+  { labelKey: "btn.ersBalanced", command: "ersBalanced" },
+  { labelKey: "btn.ersCharge", command: "ersCharge" },
+  { labelKey: "btn.tireSoft", command: "tireSoft" },
+  { labelKey: "btn.tireMedium", command: "tireMedium" },
+  { labelKey: "btn.tireHard", command: "tireHard" },
+  { labelKey: "btn.lapStatus", command: "lapStatus" },
+  { labelKey: "btn.tempStatus", command: "tempStatus" },
+  { labelKey: "btn.reset", command: "reset" },
 ];
 
 /**
@@ -273,7 +320,7 @@ const manualControls = [
  */
 const runCommand = async (command) => {
   if (!command || !commandActions[command]) {
-    return `Command not recognized.`;
+    return t("msg.notRecognized", { transcript: "" });
   }
   const message = await commandActions[command]();
   if (command === "overtake" && overtakeActive.value) {
@@ -314,13 +361,13 @@ const processCommand = async (transcript) => {
   speechService.stopListening();
   isListening.value = false;
 
-  const command = matchCommand(transcript);
+  const command = matchCommand(transcript, locale.value);
 
   if (command && commandActions[command]) {
     await runCommand(command);
   } else {
     // #5: tell the user we heard them but didn't understand the command.
-    statusMessage.value = `Command not recognized: "${transcript}". Please repeat.`;
+    statusMessage.value = t("msg.notRecognized", { transcript });
   }
 
   // Restart the listening loop if not manually stopped
@@ -338,12 +385,14 @@ const toggleListening = (forceStart = false) => {
   if (isListening.value && !forceStart) {
     speechService.stopListening();
     isListening.value = false;
-    statusMessage.value = "Radio Channel Closed";
+    statusMessage.value = t("ui.radioClosed");
   } else {
-    const started = speechService.startListening(processCommand, handleError);
+    const started = speechService.startListening(processCommand, handleError, {
+      lang: speechLang.value,
+    });
     if (started) {
       isListening.value = true;
-      statusMessage.value = "Radio Open: Listening...";
+      statusMessage.value = t("ui.radioOpen");
     } else {
       isListening.value = false;
     }
@@ -358,20 +407,20 @@ const handleError = (error) => {
     typeof error === "string"
       ? error
       : error?.error || error?.message || "unknown";
-  let errorMessage = "An unknown error occurred.";
+  let errorMessage = t("err.unknown");
   switch (errorCode) {
     case "not-allowed":
     case "service-not-allowed":
-      errorMessage = "Error: Microphone access denied.";
+      errorMessage = t("err.micDenied");
       break;
     case "not-supported":
-      errorMessage = "Error: Speech recognition not supported.";
+      errorMessage = t("err.notSupported");
       break;
     case "no-speech":
-      errorMessage = "Copy that, standing by.";
+      errorMessage = t("err.noSpeech");
       break;
     case "network":
-      errorMessage = "Network error with radio signal.";
+      errorMessage = t("err.network");
       break;
   }
   statusMessage.value = errorMessage;
@@ -411,6 +460,39 @@ h1 {
   text-transform: uppercase;
   font-size: 1.5rem;
   margin-bottom: 1.5rem;
+}
+
+.header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.header-row h1 {
+  margin-bottom: 0;
+  flex: 1;
+}
+.lang-select select {
+  font-family: "Orbitron", sans-serif;
+  background-color: #2a2a2a;
+  color: #00ffff;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .status-panel {

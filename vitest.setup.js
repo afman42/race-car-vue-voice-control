@@ -12,5 +12,6 @@ vi.mock('@/services/audioService', () => ({
 vi.mock('@/services/textToSpeechService', () => ({
   default: {
     speak: vi.fn(() => Promise.resolve()),
+    setLanguage: vi.fn(),
   }
 }));

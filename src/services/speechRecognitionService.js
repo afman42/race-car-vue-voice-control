@@ -10,6 +10,7 @@ const getRecognitionConstructor = () => {
 
 let recognition;
 let isManuallyStopped = false;
+let currentLang = "en-US";
 
 const ensureRecognition = () => {
   if (recognition) {
@@ -25,7 +26,7 @@ const ensureRecognition = () => {
   try {
     recognition = new SpeechRecognitionConstructor();
     recognition.continuous = true;
-    recognition.lang = "en-US";
+    recognition.lang = currentLang;
     recognition.interimResults = false;
   } catch (error) {
     console.error("Failed to initialise speech recognition", error);
@@ -36,7 +37,19 @@ const ensureRecognition = () => {
 };
 
 export default {
-  startListening(onResultCallback, onErrorCallback) {
+  /**
+   * Set the recognition language (BCP-47 tag, e.g. "en-US" or "id-ID").
+   * @param {string} lang
+   */
+  setLanguage(lang) {
+    if (!lang) return;
+    currentLang = lang;
+    if (recognition) {
+      recognition.lang = lang;
+    }
+  },
+
+  startListening(onResultCallback, onErrorCallback, options = {}) {
     const recognitionInstance = ensureRecognition();
 
     if (!recognitionInstance) {
@@ -45,6 +58,12 @@ export default {
       }
       return false;
     }
+
+    // Apply the requested language for this session, if provided.
+    if (options.lang) {
+      currentLang = options.lang;
+    }
+    recognitionInstance.lang = currentLang;
 
     // Set our flag to false when starting
     isManuallyStopped = false;

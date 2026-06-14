@@ -20,6 +20,7 @@ vi.mock("@/services/speechRecognitionService", () => ({
       return true;
     }),
     stopListening: vi.fn(),
+    setLanguage: vi.fn(),
     isManuallyStopped: vi.fn(() => true),
   },
 }));

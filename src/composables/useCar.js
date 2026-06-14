@@ -9,6 +9,18 @@ import {
 } from "@/config";
 import audioService from "@/services/audioService";
 import ttsService from "@/services/textToSpeechService";
+import { t } from "@/i18n";
+
+// Maps a canonical status label to its i18n key for spoken output.
+const STATUS_KEYS = {
+  Cold: "status.cold",
+  Optimal: "status.optimal",
+  Used: "status.used",
+  Worn: "status.worn",
+  Hot: "status.hot",
+  Critical: "status.critical",
+};
+const statusWord = (label) => t(STATUS_KEYS[label] || "status.optimal");
 
 if (typeof window !== "undefined" && typeof window.Audio !== "undefined") {
   audioService.loadSounds();
@@ -92,11 +104,11 @@ export function useCar() {
       if (currentLap.value >= CAR_SETTINGS.TOTAL_LAPS) {
         raceFinished.value = true;
         lapProgress.value = 0;
-        ttsService.speak("Checkered flag. Race complete.");
+        ttsService.speak(t("msg.checkeredFlag"));
         return;
       }
       currentLap.value += 1;
-      ttsService.speak(`Lap ${currentLap.value}.`);
+      ttsService.speak(t("msg.lapAnnounce", { lap: currentLap.value }));
     }
   };
 
@@ -174,21 +186,21 @@ export function useCar() {
   const checkWarnings = () => {
     if (isLowFuel.value && !lowFuelWarned.value) {
       lowFuelWarned.value = true;
-      ttsService.speak("Warning. Fuel level critical.");
+      ttsService.speak(t("msg.warnFuel"));
     } else if (!isLowFuel.value) {
       lowFuelWarned.value = false;
     }
 
     if (isLowBattery.value && !lowBatteryWarned.value) {
       lowBatteryWarned.value = true;
-      ttsService.speak("Warning. Battery level critical.");
+      ttsService.speak(t("msg.warnBattery"));
     } else if (!isLowBattery.value) {
       lowBatteryWarned.value = false;
     }
 
     if (engineTemp.value > CAR_SETTINGS.TEMP_OPTIMAL_MAX && !overheatWarned.value) {
       overheatWarned.value = true;
-      ttsService.speak("Warning. Engine temperature high.");
+      ttsService.speak(t("msg.warnTemp"));
     } else if (engineTemp.value <= CAR_SETTINGS.TEMP_OPTIMAL_MAX) {
       overheatWarned.value = false;
     }
@@ -199,7 +211,7 @@ export function useCar() {
     rpm.value = 0;
     drsStatus.value = false;
     overtakeActive.value = false;
-    await ttsService.speak("Out of fuel. Engine stalling.");
+    await ttsService.speak(t("msg.stalling"));
   };
 
   const overheatEngine = async () => {
@@ -208,19 +220,19 @@ export function useCar() {
     drsStatus.value = false;
     overtakeActive.value = false;
     rpm.value = CAR_SETTINGS.RPM_IDLE;
-    await ttsService.speak("Engine overheating. Cutting power.");
+    await ttsService.speak(t("msg.overheatCut"));
   };
 
   // --- ACTIONS (PUBLIC METHODS) ---
   const startEngine = async () => {
     if (engineStatus.value) {
-      const message = "The engine is already running.";
+      const message = t("msg.engineAlreadyRunning");
       await ttsService.speak(message);
       return message;
     }
 
     if (fuelLevel.value <= 0) {
-      const message = "Cannot start engine. The fuel tank is empty.";
+      const message = t("msg.tankEmpty");
       await ttsService.speak(message);
       return message;
     }
@@ -229,7 +241,7 @@ export function useCar() {
     rpm.value = CAR_SETTINGS.RPM_IDLE;
     overheating.value = false;
 
-    const message = "Engine started.";
+    const message = t("msg.engineStarted");
     await audioService.playSound("engineStart");
     await ttsService.speak(message); // Speak AFTER sound
     return message;
@@ -237,7 +249,7 @@ export function useCar() {
 
   const stopEngine = async () => {
     if (!engineStatus.value) {
-      const message = "The engine is already off.";
+      const message = t("msg.engineAlreadyOff");
       await ttsService.speak(message);
       return message;
     }
@@ -246,7 +258,7 @@ export function useCar() {
     rpm.value = 0;
     drsStatus.value = false;
 
-    const message = "Engine stopped.";
+    const message = t("msg.engineStopped");
     await audioService.playSound("engineStop");
     await ttsService.speak(message);
     return message;
@@ -256,9 +268,9 @@ export function useCar() {
     let message = "";
 
     if (!engineStatus.value) {
-      message = "Cannot activate DRS. The engine is off.";
+      message = t("msg.drsEngineOff");
     } else if (drsStatus.value) {
-      message = "DRS is already active.";
+      message = t("msg.drsAlreadyActive");
     } else {
       drsStatus.value = true;
       try {
@@ -266,7 +278,7 @@ export function useCar() {
       } catch (error) {
         console.error("Failed to play DRS activation sound.", error);
       }
-      message = "DRS enabled.";
+      message = t("msg.drsEnabled");
     }
 
     await ttsService.speak(message);
@@ -277,7 +289,7 @@ export function useCar() {
     let message = "";
 
     if (!drsStatus.value) {
-      message = "DRS is already disabled.";
+      message = t("msg.drsAlreadyDisabled");
     } else {
       drsStatus.value = false;
       try {
@@ -285,7 +297,7 @@ export function useCar() {
       } catch (error) {
         console.error("Failed to play DRS deactivation sound.", error);
       }
-      message = "DRS disabled.";
+      message = t("msg.drsDisabled");
     }
 
     await ttsService.speak(message);
@@ -294,13 +306,11 @@ export function useCar() {
 
   const activateOvertake = async () => {
     let message = "";
-    if (overtakeActive.value) message = "Overtake is already active.";
-    else if (!engineStatus.value)
-      message = "Cannot activate overtake, engine is off.";
-    else if (overheating.value)
-      message = "Cannot activate overtake, engine is overheating.";
+    if (overtakeActive.value) message = t("msg.overtakeAlreadyActive");
+    else if (!engineStatus.value) message = t("msg.overtakeEngineOff");
+    else if (overheating.value) message = t("msg.overtakeOverheating");
     else if (batteryLevel.value < CAR_SETTINGS.OVERTAKE_BATTERY_COST)
-      message = "Not enough battery for overtake.";
+      message = t("msg.overtakeLowBattery");
 
     if (message) {
       await ttsService.speak(message);
@@ -310,7 +320,7 @@ export function useCar() {
     overtakeActive.value = true;
     batteryLevel.value -= CAR_SETTINGS.OVERTAKE_BATTERY_COST;
     rpm.value += CAR_SETTINGS.RPM_OVERTAKE_BOOST;
-    message = "Overtake mode activated.";
+    message = t("msg.overtakeActivated");
 
     await audioService.playSound("overtakeOn");
     await ttsService.speak(message);
@@ -319,7 +329,7 @@ export function useCar() {
     overtakeTimeout = setTimeout(async () => {
       overtakeActive.value = false;
       rpm.value = engineStatus.value ? CAR_SETTINGS.RPM_IDLE : 0;
-      await ttsService.speak("Overtake finished.");
+      await ttsService.speak(t("msg.overtakeFinished"));
     }, CAR_SETTINGS.OVERTAKE_DURATION_MS);
 
     return message;
@@ -328,13 +338,13 @@ export function useCar() {
   const setFuelMix = async (mode) => {
     const key = String(mode).toUpperCase();
     if (!FUEL_MIXES[key]) {
-      const message = `Unknown fuel mix: ${mode}.`;
+      const message = t("msg.unknownFuelMix", { mode });
       await ttsService.speak(message);
       return message;
     }
 
     fuelMix.value = FUEL_MIXES[key];
-    const message = `Fuel mix set to ${FUEL_MIXES[key]}.`;
+    const message = t("msg.fuelMixSet", { label: FUEL_MIXES[key] });
     await ttsService.speak(message);
     return message;
   };
@@ -342,13 +352,13 @@ export function useCar() {
   const setErsMode = async (mode) => {
     const key = String(mode).toUpperCase();
     if (!ERS_MODES[key]) {
-      const message = `Unknown ERS mode: ${mode}.`;
+      const message = t("msg.unknownErsMode", { mode });
       await ttsService.speak(message);
       return message;
     }
 
     ersMode.value = ERS_MODES[key].label;
-    const message = `ERS mode set to ${ERS_MODES[key].label}.`;
+    const message = t("msg.ersModeSet", { label: ERS_MODES[key].label });
     await ttsService.speak(message);
     return message;
   };
@@ -356,63 +366,70 @@ export function useCar() {
   const setTireCompound = async (compound) => {
     const key = String(compound).toUpperCase();
     if (!TIRE_COMPOUNDS[key]) {
-      const message = `Unknown tire compound: ${compound}.`;
+      const message = t("msg.unknownCompound", { compound });
       await ttsService.speak(message);
       return message;
     }
 
     if (engineStatus.value) {
-      const message = "Pit the car before changing tire compound.";
+      const message = t("msg.compoundPitFirst");
       await ttsService.speak(message);
       return message;
     }
 
     tireCompound.value = TIRE_COMPOUNDS[key].label;
     tireLife.value = 100;
-    const message = `${TIRE_COMPOUNDS[key].label} tires fitted.`;
+    const message = t("msg.compoundFitted", { label: TIRE_COMPOUNDS[key].label });
     await ttsService.speak(message);
     return message;
   };
 
   const checkTireStatus = async () => {
-    const message = `${tireCompound.value} tires are ${tireStatus.value.toLowerCase()} at ${tireLife.value} percent.`;
+    const message = t("msg.tireStatus", {
+      compound: tireCompound.value,
+      status: statusWord(tireStatus.value),
+      life: tireLife.value,
+    });
     await ttsService.speak(message);
     return message;
   };
 
   const getFuelStatus = async () => {
-    const message = `Fuel level is at ${fuelLevel.value} percent.`;
+    const message = t("msg.fuelStatus", { level: fuelLevel.value });
     await ttsService.speak(message);
     return message;
   };
 
   const getBatteryStatus = async () => {
     const message = isLowBattery.value
-      ? `Battery level critical at ${batteryLevel.value} percent.`
-      : `Battery is at ${batteryLevel.value} percent.`;
+      ? t("msg.batteryCritical", { level: batteryLevel.value })
+      : t("msg.batteryStatus", { level: batteryLevel.value });
     await ttsService.speak(message);
     return message;
   };
 
   const getTempStatus = async () => {
-    const message = `Engine temperature is ${engineTemp.value} degrees, ${tempStatus.value.toLowerCase()}.`;
+    const message = t("msg.tempStatus", {
+      temp: engineTemp.value,
+      status: statusWord(tempStatus.value),
+    });
     await ttsService.speak(message);
     return message;
   };
 
   const getLapStatus = async () => {
     const message = raceFinished.value
-      ? "Race complete."
-      : `On lap ${currentLap.value} of ${CAR_SETTINGS.TOTAL_LAPS}.`;
+      ? t("msg.raceComplete")
+      : t("msg.lapStatus", {
+          lap: currentLap.value,
+          total: CAR_SETTINGS.TOTAL_LAPS,
+        });
     await ttsService.speak(message);
     return message;
   };
 
   const getHelp = async () => {
-    const message =
-      "Available commands: start engine, stop engine, D R S, overtake, " +
-      "fuel mix, E R S mode, tire compound, pit stop, lap status, " +
-      "temperature, fuel, battery, and reset.";
+    const message = t("msg.help");
     await ttsService.speak(message);
     return message;
   };
@@ -433,7 +450,7 @@ export function useCar() {
     overheatWarned.value = false;
 
     await startEngine();
-    return "Pit stop complete. Car serviced.";
+    return t("msg.pitComplete");
   };
 
   const resetRace = async () => {
@@ -459,7 +476,7 @@ export function useCar() {
     lowBatteryWarned.value = false;
     overheatWarned.value = false;
 
-    const message = "Race reset. All systems nominal.";
+    const message = t("msg.raceReset");
     await ttsService.speak(message);
     return message;
   };
