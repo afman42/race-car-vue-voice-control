@@ -14,7 +14,7 @@ export const COMMAND_MATCHERS = [
     command: "fuelMixStandard",
     keywords: ["standard mix", "standard mixture", "mix standard", "normal mix"],
   },
-  { command: "overtake", keywords: ["overtake", "over take"] },
+  { command: "overtake", keywords: ["overtake", "over take","ready"] },
   { command: "deactivateDrs", keywords: ["close drs", "disable drs", "drs off"] },
   { command: "activateDrs", keywords: ["drs"] },
   { command: "tireStatus", keywords: ["tire", "tyre"] },
