@@ -142,6 +142,77 @@
           {{ engineTemp.toFixed(0) }}&deg;C
         </p>
       </div>
+      <div class="display-item">
+        <h2>{{ t("ui.weather") }}</h2>
+        <p class="status info">{{ weather }}</p>
+      </div>
+      <div class="display-item">
+        <h2>{{ t("ui.damage") }}</h2>
+        <p
+          :class="[
+            'status',
+            damageStatus === 'Critical' || damageStatus === 'Major'
+              ? 'off'
+              : damageStatus === 'Minor'
+                ? 'info'
+                : 'on',
+          ]"
+        >
+          {{ carDamage.toFixed(0) }}%
+        </p>
+      </div>
+      <div class="display-item">
+        <h2>{{ t("ui.bestLap") }}</h2>
+        <p class="status info">{{ formatLapTime(bestLapTime) }}</p>
+      </div>
+      <div class="display-item">
+        <h2>{{ t("ui.aiRival") }}</h2>
+        <p :class="['status', aiEnabled ? 'on' : 'off']">
+          <template v-if="aiEnabled">
+            {{ aiDifficulty }}
+            <span class="ai-sub">
+              {{ t("ui.lapShort", { lap: aiCurrentLap }) }} ·
+              {{ formatLapTime(aiBestLapTime) }}
+            </span>
+          </template>
+          <template v-else>{{ t("ui.aiOff") }}</template>
+        </p>
+      </div>
+    </div>
+
+    <div
+      v-if="leaderboard.length"
+      class="leaderboard"
+      role="region"
+      :aria-label="t('ui.leaderboard')"
+    >
+      <h3>{{ t("ui.leaderboard") }}</h3>
+      <ol>
+        <li v-for="(entry, index) in leaderboard" :key="`${entry.lap}-${index}`">
+          <span class="lb-rank">{{ index + 1 }}</span>
+          <span class="lb-lap">{{ t("ui.lapShort", { lap: entry.lap }) }}</span>
+          <span class="lb-time">{{ formatLapTime(entry.time) }}</span>
+        </li>
+      </ol>
+    </div>
+
+    <div
+      v-if="aiEnabled && aiLeaderboard.length"
+      class="leaderboard ai-board"
+      role="region"
+      :aria-label="t('ui.aiBoard')"
+    >
+      <h3>{{ t("ui.aiBoard") }}</h3>
+      <ol>
+        <li
+          v-for="(entry, index) in aiLeaderboard"
+          :key="`ai-${entry.lap}-${index}`"
+        >
+          <span class="lb-rank">{{ index + 1 }}</span>
+          <span class="lb-lap">{{ t("ui.lapShort", { lap: entry.lap }) }}</span>
+          <span class="lb-time">{{ formatLapTime(entry.time) }}</span>
+        </li>
+      </ol>
     </div>
 
     <div class="manual-controls">
@@ -193,6 +264,18 @@ const {
   raceFinished,
   isLowBattery,
   isLowFuel,
+  bestLapTime,
+  lastLapTime,
+  leaderboard,
+  weather,
+  carDamage,
+  damageStatus,
+  aiEnabled,
+  aiDifficulty,
+  aiCurrentLap,
+  aiBestLapTime,
+  aiLeaderboard,
+  aiFinished,
   startEngine,
   stopEngine,
   activateDrs,
@@ -201,14 +284,22 @@ const {
   setFuelMix,
   setErsMode,
   setTireCompound,
+  setWeather,
+  setAiDifficulty,
+  disableAi,
+  getAiStatus,
   checkTireStatus,
   getFuelStatus,
   getBatteryStatus,
   getTempStatus,
   getLapStatus,
+  getBestLap,
+  getDamageStatus,
+  getWeatherStatus,
   getHelp,
   performPitStop,
   resetRace,
+  formatLapTime,
 } = useCar();
 
 // --- i18n ---
@@ -286,10 +377,23 @@ const commandActions = {
   deactivateDrs,
   activateDrs,
   lapStatus: getLapStatus,
+  bestLap: getBestLap,
   tempStatus: getTempStatus,
   tireStatus: checkTireStatus,
   fuelStatus: getFuelStatus,
   batteryStatus: getBatteryStatus,
+  damageStatus: getDamageStatus,
+  weatherStatus: getWeatherStatus,
+  weatherDry: () => setWeather("DRY"),
+  weatherCloudy: () => setWeather("CLOUDY"),
+  weatherWet: () => setWeather("WET"),
+  weatherStorm: () => setWeather("STORM"),
+  aiEasy: () => setAiDifficulty("EASY"),
+  aiMedium: () => setAiDifficulty("MEDIUM"),
+  aiHard: () => setAiDifficulty("HARD"),
+  aiRandom: () => setAiDifficulty("RANDOM"),
+  aiOff: disableAi,
+  aiStatus: getAiStatus,
 };
 
 // #8: keyboard/click fallback so the app is usable without a microphone.
@@ -311,6 +415,17 @@ const manualControls = [
   { labelKey: "btn.tireHard", command: "tireHard" },
   { labelKey: "btn.lapStatus", command: "lapStatus" },
   { labelKey: "btn.tempStatus", command: "tempStatus" },
+  { labelKey: "btn.bestLap", command: "bestLap" },
+  { labelKey: "btn.damageStatus", command: "damageStatus" },
+  { labelKey: "btn.weatherDry", command: "weatherDry" },
+  { labelKey: "btn.weatherCloudy", command: "weatherCloudy" },
+  { labelKey: "btn.weatherWet", command: "weatherWet" },
+  { labelKey: "btn.weatherStorm", command: "weatherStorm" },
+  { labelKey: "btn.aiEasy", command: "aiEasy" },
+  { labelKey: "btn.aiMedium", command: "aiMedium" },
+  { labelKey: "btn.aiHard", command: "aiHard" },
+  { labelKey: "btn.aiRandom", command: "aiRandom" },
+  { labelKey: "btn.aiOff", command: "aiOff" },
   { labelKey: "btn.reset", command: "reset" },
 ];
 
@@ -657,6 +772,66 @@ h1 {
 .rpm-label {
   fill: #888;
   font-size: 8px;
+}
+
+.leaderboard {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #444;
+}
+.leaderboard h3 {
+  color: #aaa;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+.leaderboard ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.leaderboard li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  background-color: #2a2a2a;
+  border-radius: 6px;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+}
+.leaderboard li:first-child {
+  border: 1px solid #00ffff;
+}
+.lb-rank {
+  color: #00ffff;
+  font-weight: bold;
+  width: 1.5rem;
+  text-align: center;
+}
+.lb-lap {
+  color: #aaa;
+  flex: 1;
+}
+.lb-time {
+  color: #ffdc00;
+  font-family: monospace;
+}
+
+/* AI rival board: tinted to distinguish it from the player's own laps. */
+.ai-board li:first-child {
+  border-color: #ff851b;
+}
+.ai-board .lb-rank {
+  color: #ff851b;
+}
+.ai-sub {
+  display: block;
+  font-size: 0.7rem;
+  color: #aaa;
+  font-weight: normal;
+  margin-top: 0.2rem;
 }
 
 .transcript-log {

@@ -153,5 +153,42 @@ describe("RaceControl.vue", () => {
       expect(ersMode.value).toBe("Charge");
       expect(wrapper.text()).toContain("Charge");
     });
+
+    it("changes the weather via a manual button", async () => {
+      const wrapper = mount(RaceControl);
+      const { weather } = useCar();
+
+      const wetButton = wrapper
+        .findAll(".ctrl-button")
+        .find((b) => b.text() === "Wet");
+      await wetButton.trigger("click");
+      await flush();
+
+      expect(weather.value).toBe("Wet");
+      expect(wrapper.text()).toContain("Wet");
+    });
+  });
+
+  describe("new dashboard tiles", () => {
+    it("renders weather, damage and best lap tiles", () => {
+      const wrapper = mount(RaceControl);
+      const text = wrapper.text();
+      expect(text).toContain("Dry"); // default weather
+      expect(text).toContain("Weather");
+      expect(text).toContain("Damage");
+      expect(text).toContain("Best Lap");
+      expect(text).toContain("--:--"); // no lap time yet
+    });
+
+    it("hides the leaderboard until a lap is posted", async () => {
+      const wrapper = mount(RaceControl);
+      expect(wrapper.find(".leaderboard").exists()).toBe(false);
+
+      const { leaderboard } = useCar();
+      leaderboard.value = [{ lap: 1, time: 12345 }];
+      await flush();
+
+      expect(wrapper.find(".leaderboard").exists()).toBe(true);
+    });
   });
 });

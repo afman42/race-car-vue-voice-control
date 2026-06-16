@@ -6,10 +6,13 @@ import {
   FUEL_MIXES,
   TIRE_COMPOUNDS,
   ERS_MODES,
+  WEATHER_CONDITIONS,
 } from "@/config";
 import audioService from "@/services/audioService";
 import ttsService from "@/services/textToSpeechService";
 import { t } from "@/i18n";
+import { formatLapTime } from "@/utils/formatLapTime";
+import { useAiRival } from "@/composables/useAiRival";
 
 // Maps a canonical status label to its i18n key for spoken output.
 const STATUS_KEYS = {
@@ -19,6 +22,9 @@ const STATUS_KEYS = {
   Worn: "status.worn",
   Hot: "status.hot",
   Critical: "status.critical",
+  None: "status.none",
+  Minor: "status.minor",
+  Major: "status.major",
 };
 const statusWord = (label) => t(STATUS_KEYS[label] || "status.optimal");
 
@@ -43,6 +49,26 @@ const overheating = ref(false);
 const currentLap = ref(1);
 const lapProgress = ref(0); // 0..LAP_DISTANCE accumulated within the lap
 const raceFinished = ref(false);
+
+// --- LAP TIMING + LEADERBOARD ---
+// currentLapTime accrues simulated milliseconds each tick; on lap completion it
+// is recorded, compared against the best, and pushed onto the leaderboard.
+const currentLapTime = ref(0);
+const lastLapTime = ref(null);
+const bestLapTime = ref(null);
+// leaderboard: array of { lap, time } sorted fastest-first, capped at LEADERBOARD_SIZE.
+const leaderboard = ref([]);
+
+// --- WEATHER + DAMAGE ---
+const weather = ref(WEATHER_CONDITIONS.DRY.label);
+const carDamage = ref(0); // 0..100
+
+// --- AI RIVAL ---
+// The rival lives in its own composable (useAiRival). It is modeled as a
+// lap-time generator, not a full physics car, so the human car's singleton
+// state stays untouched. We pull in its state, tick, and actions here.
+const ai = useAiRival();
+
 let simulationInterval = null;
 let overtakeTimeout = null;
 
@@ -51,6 +77,7 @@ let overtakeTimeout = null;
 const lowFuelWarned = ref(false);
 const lowBatteryWarned = ref(false);
 const overheatWarned = ref(false);
+const damageWarned = ref(false);
 
 // This function is our composable.
 export function useCar() {
@@ -77,6 +104,23 @@ export function useCar() {
     return "Optimal";
   });
 
+  // Car damage condition label derived from accumulated damage.
+  const damageStatus = computed(() => {
+    if (carDamage.value >= CAR_SETTINGS.DAMAGE_CRITICAL_THRESHOLD)
+      return "Critical";
+    if (carDamage.value >= CAR_SETTINGS.DAMAGE_MAJOR_THRESHOLD) return "Major";
+    if (carDamage.value >= CAR_SETTINGS.DAMAGE_MINOR_THRESHOLD) return "Minor";
+    return "None";
+  });
+
+  // Pace multiplier (0..1): how much of the car's potential speed is available
+  // after damage. At full damage the car keeps (1 - DAMAGE_MAX_PACE_PENALTY).
+  const paceFactor = computed(() => {
+    const penalty =
+      (carDamage.value / 100) * CAR_SETTINGS.DAMAGE_MAX_PACE_PENALTY;
+    return Math.max(0, 1 - penalty);
+  });
+
   // --- PRIVATE METHODS (LOGIC) ---
   const normalizedRpmRatio = () => {
     const rpmRatio =
@@ -94,13 +138,44 @@ export function useCar() {
     Object.values(ERS_MODES).find((m) => m.label === ersMode.value) ||
     ERS_MODES.BALANCED;
 
+  const weatherConfig = () =>
+    Object.values(WEATHER_CONDITIONS).find((w) => w.label === weather.value) ||
+    WEATHER_CONDITIONS.DRY;
+
+  // Record a completed lap time onto the leaderboard and track the best.
+  const recordLap = (lapNumber, timeMs) => {
+    const time = Math.round(timeMs);
+    lastLapTime.value = time;
+    if (bestLapTime.value === null || time < bestLapTime.value) {
+      bestLapTime.value = time;
+    }
+    const next = [...leaderboard.value, { lap: lapNumber, time }];
+    next.sort((a, b) => a.time - b.time);
+    leaderboard.value = next.slice(0, CAR_SETTINGS.LEADERBOARD_SIZE);
+  };
+
   const updateLapProgress = (ratio) => {
     if (raceFinished.value) return;
-    // Distance accrues with RPM: idle still creeps, max RPM is fastest.
-    lapProgress.value += CAR_SETTINGS.LAP_DISTANCE * 0.1 * (0.5 + ratio);
+
+    // Lap time accrues every tick the engine runs, so slower laps (less
+    // distance covered per tick) post higher times.
+    currentLapTime.value += CAR_SETTINGS.LAP_TIME_PER_TICK_MS;
+
+    // Distance accrues with RPM: idle still creeps, max RPM is fastest. Wet
+    // weather (grip) and accumulated damage (pace) both slow the car down.
+    const speed =
+      CAR_SETTINGS.LAP_DISTANCE *
+      0.1 *
+      (0.5 + ratio) *
+      weatherConfig().gripFactor *
+      paceFactor.value;
+    lapProgress.value += speed;
 
     while (lapProgress.value >= CAR_SETTINGS.LAP_DISTANCE) {
       lapProgress.value -= CAR_SETTINGS.LAP_DISTANCE;
+      // Bank the time posted for the lap just completed and reset the clock.
+      recordLap(currentLap.value, currentLapTime.value);
+      currentLapTime.value = 0;
       if (currentLap.value >= CAR_SETTINGS.TOTAL_LAPS) {
         raceFinished.value = true;
         lapProgress.value = 0;
@@ -119,10 +194,29 @@ export function useCar() {
     const cool = CAR_SETTINGS.TEMP_COOL_RATE * (1 - ratio);
     next += heat - cool;
     if (overtakeActive.value) next += CAR_SETTINGS.TEMP_OVERTAKE_PENALTY;
+    // Weather nudges effective temperature: rain cools, dry heat builds.
+    next += weatherConfig().tempBias;
     // Never drop below ambient.
     engineTemp.value = parseFloat(
       Math.max(CAR_SETTINGS.TEMP_AMBIENT, next).toFixed(1),
     );
+  };
+
+  // Damage accrues while the engine is overstressed: running critically hot or
+  // grinding on destroyed tires. It only repairs in the pits.
+  const updateDamage = () => {
+    let added = 0;
+    if (engineTemp.value >= CAR_SETTINGS.TEMP_CRITICAL) {
+      added += CAR_SETTINGS.DAMAGE_OVERHEAT_RATE;
+    }
+    if (tireLife.value <= 0) {
+      added += CAR_SETTINGS.DAMAGE_WORN_TIRE_RATE;
+    }
+    if (added > 0) {
+      carDamage.value = parseFloat(
+        Math.min(100, carDamage.value + added).toFixed(2),
+      );
+    }
   };
 
   const runSimulationTick = () => {
@@ -145,13 +239,14 @@ export function useCar() {
       );
     }
 
-    // Tires wear faster at higher RPM (1x at idle up to 2x at max RPM) and
-    // scaled by the fitted compound's wear factor.
+    // Tires wear faster at higher RPM (1x at idle up to 2x at max RPM),
+    // scaled by the fitted compound's wear factor and the current weather.
     if (tireLife.value > 0) {
       const wear =
         CAR_SETTINGS.TIRE_WEAR_RATE *
         (1 + ratio) *
-        compoundConfig().wearFactor;
+        compoundConfig().wearFactor *
+        weatherConfig().wearFactor;
       tireLife.value = parseFloat(
         Math.max(0, tireLife.value - wear).toFixed(2),
       );
@@ -167,7 +262,9 @@ export function useCar() {
     }
 
     updateTemperature(ratio);
+    updateDamage();
     updateLapProgress(ratio);
+    ai.tick();
     checkWarnings();
 
     // Out of fuel: the engine stalls.
@@ -203,6 +300,15 @@ export function useCar() {
       ttsService.speak(t("msg.warnTemp"));
     } else if (engineTemp.value <= CAR_SETTINGS.TEMP_OPTIMAL_MAX) {
       overheatWarned.value = false;
+    }
+
+    const damageCritical =
+      carDamage.value >= CAR_SETTINGS.DAMAGE_CRITICAL_THRESHOLD;
+    if (damageCritical && !damageWarned.value) {
+      damageWarned.value = true;
+      ttsService.speak(t("msg.warnDamage"));
+    } else if (!damageCritical) {
+      damageWarned.value = false;
     }
   };
 
@@ -427,6 +533,35 @@ export function useCar() {
 
   const getHelp = () => speakAndReturn("msg.help");
 
+  const getBestLap = () => {
+    if (bestLapTime.value === null) return speakAndReturn("msg.noLapYet");
+    return speakAndReturn("msg.bestLap", {
+      time: formatLapTime(bestLapTime.value),
+    });
+  };
+
+  const getDamageStatus = () =>
+    speakAndReturn("msg.damageStatus", {
+      damage: carDamage.value,
+      status: statusWord(damageStatus.value),
+    });
+
+  const getWeatherStatus = () =>
+    speakAndReturn("msg.weatherStatus", { weather: weather.value });
+
+  const setWeather = async (condition) => {
+    const key = String(condition).toUpperCase();
+    if (!WEATHER_CONDITIONS[key]) {
+      const message = t("msg.unknownWeather", { condition });
+      await ttsService.speak(message);
+      return message;
+    }
+    weather.value = WEATHER_CONDITIONS[key].label;
+    const message = t("msg.weatherSet", { label: WEATHER_CONDITIONS[key].label });
+    await ttsService.speak(message);
+    return message;
+  };
+
   const performPitStop = async () => {
     await stopEngine(); // Use existing actions
     await new Promise((resolve) =>
@@ -436,11 +571,13 @@ export function useCar() {
     fuelLevel.value = 100;
     batteryLevel.value = 100;
     tireLife.value = 100;
+    carDamage.value = 0;
     engineTemp.value = CAR_SETTINGS.TEMP_AMBIENT;
     overheating.value = false;
     lowFuelWarned.value = false;
     lowBatteryWarned.value = false;
     overheatWarned.value = false;
+    damageWarned.value = false;
 
     await startEngine();
     return t("msg.pitComplete");
@@ -469,16 +606,33 @@ export function useCar() {
     lowBatteryWarned.value = false;
     overheatWarned.value = false;
 
+    // Reset lap timing, leaderboard, weather and damage.
+    currentLapTime.value = 0;
+    lastLapTime.value = null;
+    bestLapTime.value = null;
+    leaderboard.value = [];
+    weather.value = WEATHER_CONDITIONS.DRY.label;
+    carDamage.value = 0;
+    damageWarned.value = false;
+
+    // Reset the AI rival but keep it enabled at its chosen difficulty so a
+    // reset re-runs the same matchup. setAiDifficulty/disableAi change those.
+    ai.resetProgress();
+
     const message = t("msg.raceReset");
     await ttsService.speak(message);
     return message;
   };
 
   // --- WATCHER FOR SIMULATION ---
+  // The sim loop runs while the engine is on OR an AI rival is still racing, so
+  // the rival keeps lapping even if the player never starts their own engine.
   watch(
-    engineStatus,
-    (isEngineOn) => {
-      if (isEngineOn) {
+    [engineStatus, ai.enabled, ai.finished],
+    () => {
+      const shouldRun =
+        engineStatus.value || (ai.enabled.value && !ai.finished.value);
+      if (shouldRun) {
         if (simulationInterval) clearInterval(simulationInterval);
         simulationInterval = setInterval(
           runSimulationTick,
@@ -522,11 +676,28 @@ export function useCar() {
     currentLap,
     lapProgress,
     raceFinished,
+    currentLapTime,
+    lastLapTime,
+    bestLapTime,
+    leaderboard,
+    weather,
+    carDamage,
+    // AI rival state (re-exposed from useAiRival under the public names).
+    aiEnabled: ai.enabled,
+    aiDifficulty: ai.difficulty,
+    aiCurrentLap: ai.currentLap,
+    aiLapProgress: ai.lapProgress,
+    aiBestLapTime: ai.bestLapTime,
+    aiLeaderboard: ai.leaderboard,
+    aiFinished: ai.finished,
     // Getters
     tireStatus,
     tempStatus,
     isLowBattery,
     isLowFuel,
+    damageStatus,
+    paceFactor,
+    aiConfig: ai.config,
     // Actions
     startEngine,
     stopEngine,
@@ -536,14 +707,23 @@ export function useCar() {
     setFuelMix,
     setErsMode,
     setTireCompound,
+    setWeather,
+    setAiDifficulty: ai.setDifficulty,
+    disableAi: ai.disable,
+    getAiStatus: ai.getStatus,
     checkTireStatus,
     getFuelStatus,
     getBatteryStatus,
     getTempStatus,
     getLapStatus,
+    getBestLap,
+    getDamageStatus,
+    getWeatherStatus,
     getHelp,
     performPitStop,
     resetRace,
+    // Helpers
+    formatLapTime,
     // Internals exposed for testing
     runSimulationTick,
   };

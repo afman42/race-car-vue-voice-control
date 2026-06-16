@@ -43,6 +43,34 @@ export const CAR_SETTINGS = {
   TEMP_RISE_RATE: 12, // max degrees gained per tick at full RPM
   TEMP_COOL_RATE: 8, // degrees shed per tick toward ambient
   TEMP_OVERTAKE_PENALTY: 10, // extra degrees per tick while overtaking
+
+  // Lap timing: simulated milliseconds added to the current lap each tick.
+  // Faster laps (higher RPM) finish in fewer ticks, so they post lower times.
+  LAP_TIME_PER_TICK_MS: 1000,
+  LEADERBOARD_SIZE: 5, // how many fastest laps to keep on the board
+
+  // Damage (0..100). Accrues from overheating and running ruined tires, and
+  // saps performance (lap pace) until repaired in the pits.
+  DAMAGE_OVERHEAT_RATE: 4, // damage per tick while temperature is critical
+  DAMAGE_WORN_TIRE_RATE: 2, // damage per tick while tires are destroyed
+  DAMAGE_MINOR_THRESHOLD: 20,
+  DAMAGE_MAJOR_THRESHOLD: 50,
+  DAMAGE_CRITICAL_THRESHOLD: 80,
+  // At 100 damage the car loses this fraction of its pace (0.4 => 40% slower).
+  DAMAGE_MAX_PACE_PENALTY: 0.4,
+
+  // AI rival: the reference lap time (ms) a perfect rival targets. Difficulty
+  // scales this by paceFactor (higher = faster) and adds random variance.
+  AI_BASE_LAP_MS: 8000,
+};
+
+// AI rival difficulty. paceFactor scales the rival's lap pace (1.0 = reference,
+// lower = slower laps); variance is the fractional random swing applied to each
+// lap (0.12 => +/-12%), so easier rivals are both slower and less consistent.
+export const AI_DIFFICULTY = {
+  EASY: { label: "Easy", paceFactor: 0.8, variance: 0.12 },
+  MEDIUM: { label: "Medium", paceFactor: 0.92, variance: 0.07 },
+  HARD: { label: "Hard", paceFactor: 1.0, variance: 0.03 },
 };
 
 // Valid fuel mix modes mapped to their display label.
@@ -66,4 +94,14 @@ export const ERS_MODES = {
   HOTLAP: { label: "Hotlap", rechargeFactor: 0.3 },
   BALANCED: { label: "Balanced", rechargeFactor: 1.0 },
   CHARGE: { label: "Charge", rechargeFactor: 2.0 },
+};
+
+// Weather conditions affect grip and pace. gripFactor scales lap pace and
+// tire wear: wetter conditions are slower and chew tires harder. tempBias
+// nudges the engine's effective cooling (rain cools, dry heat builds).
+export const WEATHER_CONDITIONS = {
+  DRY: { label: "Dry", gripFactor: 1.0, wearFactor: 1.0, tempBias: 0 },
+  CLOUDY: { label: "Cloudy", gripFactor: 0.95, wearFactor: 0.9, tempBias: -3 },
+  WET: { label: "Wet", gripFactor: 0.75, wearFactor: 1.3, tempBias: -8 },
+  STORM: { label: "Storm", gripFactor: 0.55, wearFactor: 1.6, tempBias: -12 },
 };

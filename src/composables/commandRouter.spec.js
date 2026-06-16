@@ -1,7 +1,7 @@
 // src/composables/commandRouter.spec.js
 
 import { describe, it, expect } from "vitest";
-import { matchCommand } from "./commandRouter";
+import { matchCommand, levenshtein } from "./commandRouter";
 
 describe("matchCommand", () => {
   it("returns null for empty or unmatched input", () => {
@@ -107,5 +107,101 @@ describe("matchCommand", () => {
     it("returns null for unrecognized Indonesian input", () => {
       expect(matchCommand("makan nasi goreng", "id")).toBeNull();
     });
+  });
+
+  describe("new commands", () => {
+    it("matches best lap before the generic lap query", () => {
+      expect(matchCommand("best lap")).toBe("bestLap");
+      expect(matchCommand("what is my fastest lap")).toBe("bestLap");
+      expect(matchCommand("lap record")).toBe("bestLap");
+    });
+
+    it("matches weather conditions", () => {
+      expect(matchCommand("set dry")).toBe("weatherDry");
+      expect(matchCommand("cloudy weather")).toBe("weatherCloudy");
+      expect(matchCommand("wet track")).toBe("weatherWet");
+      expect(matchCommand("it is raining")).toBe("weatherWet");
+      expect(matchCommand("storm")).toBe("weatherStorm");
+    });
+
+    it("matches weather and damage status queries", () => {
+      expect(matchCommand("weather status")).toBe("weatherStatus");
+      expect(matchCommand("car damage")).toBe("damageStatus");
+    });
+
+    it("matches Indonesian weather and damage keywords", () => {
+      expect(matchCommand("hujan", "id")).toBe("weatherWet");
+      expect(matchCommand("badai", "id")).toBe("weatherStorm");
+      expect(matchCommand("kerusakan", "id")).toBe("damageStatus");
+      expect(matchCommand("lap tercepat", "id")).toBe("bestLap");
+    });
+
+    it("matches AI rival difficulty commands", () => {
+      expect(matchCommand("easy mode")).toBe("aiEasy");
+      expect(matchCommand("rival medium")).toBe("aiMedium");
+      expect(matchCommand("hard difficulty")).toBe("aiHard");
+      expect(matchCommand("random rival")).toBe("aiRandom");
+      expect(matchCommand("surprise me")).toBe("aiRandom");
+    });
+
+    it("matches rival off before the difficulty levels and status", () => {
+      expect(matchCommand("rival off")).toBe("aiOff");
+      expect(matchCommand("disable rival")).toBe("aiOff");
+      expect(matchCommand("no rival")).toBe("aiOff");
+    });
+
+    it("matches AI rival status query", () => {
+      expect(matchCommand("rival status")).toBe("aiStatus");
+      expect(matchCommand("ai status")).toBe("aiStatus");
+      expect(matchCommand("opponent")).toBe("aiStatus");
+    });
+
+    it("matches Indonesian AI rival keywords", () => {
+      expect(matchCommand("mode mudah", "id")).toBe("aiEasy");
+      expect(matchCommand("lawan sulit", "id")).toBe("aiHard");
+      expect(matchCommand("lawan acak", "id")).toBe("aiRandom");
+      expect(matchCommand("matikan lawan", "id")).toBe("aiOff");
+      expect(matchCommand("status lawan", "id")).toBe("aiStatus");
+    });
+  });
+
+  describe("fuzzy matching", () => {
+    it("tolerates minor speech-recognition slips", () => {
+      // "engin" -> "engine", "ovrtake" -> "overtake"
+      expect(matchCommand("start engin")).toBe("startEngine");
+      expect(matchCommand("ovrtake")).toBe("overtake");
+    });
+
+    it("matches multi-word commands with a single mangled word", () => {
+      expect(matchCommand("pit stp")).toBe("pitStop");
+      expect(matchCommand("soft tire")).toBe("tireSoft");
+    });
+
+    it("does not fuzzy-match very short keywords", () => {
+      // "drs" is short, so a stray near-miss should not trigger it.
+      expect(matchCommand("dgs")).toBeNull();
+    });
+
+    it("still returns null for genuinely unrelated input", () => {
+      expect(matchCommand("make me a sandwich")).toBeNull();
+      expect(matchCommand("xyzzy plugh")).toBeNull();
+    });
+  });
+});
+
+describe("levenshtein", () => {
+  it("returns 0 for identical strings", () => {
+    expect(levenshtein("engine", "engine")).toBe(0);
+  });
+
+  it("returns the length when one string is empty", () => {
+    expect(levenshtein("", "abc")).toBe(3);
+    expect(levenshtein("abc", "")).toBe(3);
+  });
+
+  it("counts single-character edits", () => {
+    expect(levenshtein("engin", "engine")).toBe(1); // insertion
+    expect(levenshtein("overtake", "ovrtake")).toBe(1); // deletion
+    expect(levenshtein("soft", "saft")).toBe(1); // substitution
   });
 });
