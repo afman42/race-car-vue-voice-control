@@ -44,12 +44,13 @@ describe("useCar Composable", () => {
 
   describe("engine", () => {
     it("startEngine should turn the engine on and set idle RPM", async () => {
-      const { startEngine, engineStatus, rpm } = useCar();
+      const { startEngine, engineStatus, rpm, currentGear } = useCar();
       const message = await startEngine();
 
       expect(message).toBe("Engine started.");
       expect(engineStatus.value).toBe(true);
-      expect(rpm.value).toBe(CAR_SETTINGS.RPM_IDLE);
+      expect(rpm.value).toBe(CAR_SETTINGS.GEAR_START_RPM);
+      expect(currentGear.value).toBe(1);
       expect(audioService.playSound).toHaveBeenCalledWith("engineStart");
       expect(ttsService.speak).toHaveBeenCalledWith("Engine started.");
     });

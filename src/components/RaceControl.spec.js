@@ -200,9 +200,19 @@ describe("RaceControl.vue", () => {
       expect(badge.text()).toContain("Position");
       expect(badge.text()).toContain("P1");
       expect(wrapper.find(".track-svg").exists()).toBe(true);
-      // Only the player marker shows when no rival is enabled.
       expect(wrapper.find(".track-marker.player").exists()).toBe(true);
       expect(wrapper.find(".track-marker.rival").exists()).toBe(false);
+    });
+
+    it("renders the start/finish line on the track map", () => {
+      const wrapper = mount(RaceControl);
+      expect(wrapper.find(".start-finish").exists()).toBe(true);
+    });
+
+    it("renders segment boundary markers on the track map", () => {
+      const wrapper = mount(RaceControl);
+      const markers = wrapper.findAll(".seg-boundary");
+      expect(markers.length).toBe(CAR_SETTINGS.TRACK_LAYOUT.length);
     });
 
     it("announces position via the manual Position button", async () => {
@@ -217,6 +227,77 @@ describe("RaceControl.vue", () => {
 
       // Solo run: status message reflects the spoken position callout.
       expect(wrapper.get(".status-text").text()).toMatch(/solo/i);
+    });
+  });
+
+  describe("track segments", () => {
+    it("renders the segment display in the dashboard", () => {
+      const wrapper = mount(RaceControl);
+      const segDisplay = wrapper.find(".segment-display");
+      expect(segDisplay.exists()).toBe(true);
+      expect(segDisplay.text()).toContain("Track");
+      expect(segDisplay.text()).toContain("STRAIGHT");
+    });
+
+    it("displays a corner segment when lapProgress enters the first corner", async () => {
+      const { lapProgress } = useCar();
+      lapProgress.value = 30;
+      await flush();
+
+      const wrapper = mount(RaceControl);
+      const badge = wrapper.find(".segment-badge");
+      expect(badge.text()).toContain("SLOW");
+      expect(badge.classes()).toContain("corner");
+      expect(badge.classes()).toContain("speed-slow");
+    });
+
+    it("displays a medium corner at the right position", async () => {
+      const { lapProgress } = useCar();
+      lapProgress.value = 50; // In the medium corner (segments cover 25+8+12=45 to 45+10=55)
+      await flush();
+
+      const wrapper = mount(RaceControl);
+      const badge = wrapper.find(".segment-badge");
+      expect(badge.text()).toContain("MED");
+      expect(badge.classes()).toContain("speed-medium");
+    });
+
+    it("displays a fast corner at the right position", async () => {
+      const { lapProgress } = useCar();
+      lapProgress.value = 75; // In the fast corner (55+15=70 to 70+10=80)
+      await flush();
+
+      const wrapper = mount(RaceControl);
+      const badge = wrapper.find(".segment-badge");
+      expect(badge.text()).toContain("FAST");
+      expect(badge.classes()).toContain("speed-fast");
+    });
+
+    it("first segment boundary marker is a straight (green)", () => {
+      const wrapper = mount(RaceControl);
+      const markers = wrapper.findAll(".seg-boundary");
+      expect(markers[0].classes()).toContain("straight");
+    });
+
+    it("second segment boundary marker is a slow corner (red)", () => {
+      const wrapper = mount(RaceControl);
+      const markers = wrapper.findAll(".seg-boundary");
+      expect(markers[1].classes()).toContain("corner");
+      expect(markers[1].classes()).toContain("speed-slow");
+    });
+
+    it("fourth marker is a medium corner (yellow)", () => {
+      const wrapper = mount(RaceControl);
+      const markers = wrapper.findAll(".seg-boundary");
+      expect(markers[3].classes()).toContain("corner");
+      expect(markers[3].classes()).toContain("speed-medium");
+    });
+
+    it("sixth marker is a fast corner (orange)", () => {
+      const wrapper = mount(RaceControl);
+      const markers = wrapper.findAll(".seg-boundary");
+      expect(markers[5].classes()).toContain("corner");
+      expect(markers[5].classes()).toContain("speed-fast");
     });
   });
 });

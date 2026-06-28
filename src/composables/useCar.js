@@ -9,6 +9,7 @@ import {
   WEATHER_CONDITIONS,
 } from "@/config";
 import audioService from "@/services/audioService";
+import engineAudioService from "@/services/engineAudioService";
 import ttsService from "@/services/textToSpeechService";
 import { t } from "@/i18n";
 import { formatLapTime } from "@/utils/formatLapTime";
@@ -42,6 +43,8 @@ if (typeof window !== "undefined" && typeof window.Audio !== "undefined") {
 // will share this same reactive state.
 const engineStatus = ref(false);
 const rpm = ref(0);
+const currentGear = ref(0); // 0 = neutral, 1-7 = in gear
+const currentSegmentIndex = ref(0); // which track segment the car is in
 const drsStatus = ref(false);
 const overtakeActive = ref(false);
 const tireLife = ref(100); // 0..100, drives the tireStatus label
@@ -77,6 +80,22 @@ const ai = useAiRival();
 
 let simulationInterval = null;
 let overtakeTimeout = null;
+let lastSegmentIndex = -1;
+
+// Find which track segment a lap progress value falls within.
+// Handles wrapping so progress > LAP_DISTANCE wraps back to the start.
+// Exported so the UI can derive segment info directly from lapProgress.
+export const findSegmentAtProgress = (progress) => {
+  const safeProgress = ((progress % CAR_SETTINGS.LAP_DISTANCE) + CAR_SETTINGS.LAP_DISTANCE) % CAR_SETTINGS.LAP_DISTANCE;
+  let accumulated = 0;
+  for (let i = 0; i < CAR_SETTINGS.TRACK_LAYOUT.length; i++) {
+    accumulated += CAR_SETTINGS.TRACK_LAYOUT[i].length;
+    if (safeProgress < accumulated) {
+      return { index: i, segment: CAR_SETTINGS.TRACK_LAYOUT[i] };
+    }
+  }
+  return { index: 0, segment: CAR_SETTINGS.TRACK_LAYOUT[0] };
+};
 
 // Warning latches so a low-level radio call is announced once per crossing
 // rather than on every simulation tick.
@@ -155,6 +174,69 @@ export function useCar() {
   const playerLoopPos = computed(() => loopPosition(playerProgress.value));
   const rivalLoopPos = computed(() => loopPosition(rivalProgress.value));
 
+  // --- TRACK-AWARE GEAR LOGIC ---
+  // Determine the target gear for the car's current track position.
+  // On straights the target is top gear (7th), so the car upshifts
+  // sequentially as RPM climbs. On corners the target is the optimal
+  // cornering gear (slow=2nd, medium=3rd, fast=4th), so the car
+  // downshifts toward it.
+  const getTargetGearForSegment = (seg) => {
+    if (seg.type === "straight") return CAR_SETTINGS.GEAR_COUNT;
+    return CAR_SETTINGS.CORNER_TARGET_GEARS[seg.speed] || 3;
+  };
+
+  // Called after the main calculations and RPM climb. Uses the updated
+  // lapProgress to determine which track segment the car is in and sets
+  // the target gear accordingly.
+  const autoShift = () => {
+    if (!engineStatus.value) {
+      currentGear.value = 0;
+      return;
+    }
+
+    if (currentGear.value === 0) {
+      currentGear.value = 1;
+      engineAudioService.onShift();
+      return;
+    }
+
+    const prevGear = currentGear.value;
+    const segInfo = findSegmentAtProgress(lapProgress.value);
+    const targetGear = getTargetGearForSegment(segInfo.segment);
+    currentSegmentIndex.value = segInfo.index;
+
+    // Track the current segment index so we can detect transitions in
+    // subsequent ticks to play downshift sounds / trigger engine audio.
+    lastSegmentIndex = segInfo.index;
+
+    // On a straight: upshift when RPM is high enough.
+    if (currentGear.value < targetGear) {
+      if (rpm.value >= CAR_SETTINGS.GEAR_SHIFT_RPM) {
+        currentGear.value++;
+        rpm.value = CAR_SETTINGS.GEAR_DROP_RPM;
+      }
+    }
+
+    // In or entering a corner: drop gears toward the target.
+    // Drop 2 gears per tick for a realistic sequential downshift feel.
+    if (currentGear.value > targetGear) {
+      const drop = Math.min(2, currentGear.value - targetGear);
+      currentGear.value -= drop;
+      rpm.value = CAR_SETTINGS.GEAR_DROP_RPM;
+    }
+
+    // Safety downshift: RPM dropped to near-idle (e.g. after overtake).
+    if (rpm.value <= CAR_SETTINGS.RPM_IDLE + 500 && currentGear.value > 1) {
+      currentGear.value--;
+      rpm.value = CAR_SETTINGS.GEAR_DROP_RPM;
+    }
+
+    // Play a shift blip if the gear actually changed.
+    if (currentGear.value !== prevGear) {
+      engineAudioService.onShift();
+    }
+  };
+
   // --- PRIVATE METHODS (LOGIC) ---
   const normalizedRpmRatio = () => {
     const rpmRatio =
@@ -195,15 +277,39 @@ export function useCar() {
     // distance covered per tick) post higher times.
     currentLapTime.value += CAR_SETTINGS.LAP_TIME_PER_TICK_MS;
 
-    // Distance accrues with RPM: idle still creeps, max RPM is fastest. Wet
-    // weather (grip) and accumulated damage (pace) both slow the car down.
-    const speed =
+    // Distance accrues with RPM × gear ratio: the same RPM in a higher gear
+    // produces more speed. Wet weather (grip) and damage (pace) modulate.
+    const gearRatio =
+      CAR_SETTINGS.GEAR_RATIOS[currentGear.value] || 0.5;
+    const rawSpeed =
       CAR_SETTINGS.LAP_DISTANCE *
       0.1 *
-      (0.5 + ratio) *
+      (0.3 + ratio * gearRatio) *
       weatherConfig().gripFactor *
       paceFactor.value;
-    lapProgress.value += speed;
+
+    // Determine the current segment's corner factor from the START position.
+    const startSeg = findSegmentAtProgress(lapProgress.value);
+    const startCornerFactor =
+      startSeg.segment.type === "corner"
+        ? CAR_SETTINGS.CORNER_SPEED_CAP
+        : 1.0;
+
+    // Apply the speed and check if we crossed a segment boundary mid-tick.
+    // If the new segment is a different type (straight ↔ corner), recalculate
+    // with that segment's factor so corner entries slow down and exits speed
+    // up within the same tick.
+    const beforeProgress = lapProgress.value;
+    lapProgress.value += rawSpeed * startCornerFactor;
+
+    const endSeg = findSegmentAtProgress(lapProgress.value);
+    if (endSeg.index !== startSeg.index) {
+      const endCornerFactor =
+        endSeg.segment.type === "corner"
+          ? CAR_SETTINGS.CORNER_SPEED_CAP
+          : 1.0;
+      lapProgress.value = beforeProgress + rawSpeed * endCornerFactor;
+    }
 
     while (lapProgress.value >= CAR_SETTINGS.LAP_DISTANCE) {
       lapProgress.value -= CAR_SETTINGS.LAP_DISTANCE;
@@ -301,6 +407,25 @@ export function useCar() {
     ai.tick();
     checkWarnings();
 
+    // RPM climbs while the engine is running, simulating acceleration.
+    // This happens after the main calculations so the current tick's ratio
+    // uses the RPM as it was at the start of the tick (preserving test
+    // expectations and making gear transitions predictable).
+    if (engineStatus.value && !overheating.value) {
+      rpm.value = Math.min(
+        CAR_SETTINGS.RPM_MAX,
+        rpm.value + CAR_SETTINGS.GEAR_RPM_CLIMB,
+      );
+    }
+
+    // Check for gear changes based on the new RPM (affects next tick).
+    autoShift();
+
+    // Keep the synthesized engine pitch in sync with RPM.
+    if (engineAudioService.isActive) {
+      engineAudioService.setRpm(rpm.value);
+    }
+
     // Out of fuel: the engine stalls.
     if (fuelLevel.value <= 0 && engineStatus.value) {
       stallEngine();
@@ -310,6 +435,9 @@ export function useCar() {
     // Overheating: the engine cuts power until it cools below critical.
     if (engineTemp.value >= CAR_SETTINGS.TEMP_CRITICAL && engineStatus.value) {
       overheatEngine();
+    } else if (overheating.value && engineTemp.value < CAR_SETTINGS.TEMP_OPTIMAL_MAX) {
+      // Engine has cooled enough — restore full power.
+      overheating.value = false;
     }
   };
 
@@ -349,8 +477,10 @@ export function useCar() {
   const stallEngine = async () => {
     engineStatus.value = false;
     rpm.value = 0;
+    currentGear.value = 0;
     drsStatus.value = false;
     overtakeActive.value = false;
+    engineAudioService.stop();
     await ttsService.speak(t("msg.stalling"));
   };
 
@@ -360,6 +490,7 @@ export function useCar() {
     drsStatus.value = false;
     overtakeActive.value = false;
     rpm.value = CAR_SETTINGS.RPM_IDLE;
+    currentGear.value = 0;
     await ttsService.speak(t("msg.overheatCut"));
   };
 
@@ -390,12 +521,16 @@ export function useCar() {
     }
 
     engineStatus.value = true;
-    rpm.value = CAR_SETTINGS.RPM_IDLE;
+    currentGear.value = 1;
+    rpm.value = CAR_SETTINGS.GEAR_START_RPM;
     overheating.value = false;
+
+    // Start the synthesized engine audio.
+    engineAudioService.start(CAR_SETTINGS.GEAR_START_RPM);
 
     const message = t("msg.engineStarted");
     await audioService.playSound("engineStart");
-    await ttsService.speak(message); // Speak AFTER sound
+    await ttsService.speak(message);
     return message;
   };
 
@@ -408,7 +543,11 @@ export function useCar() {
 
     engineStatus.value = false;
     rpm.value = 0;
+    currentGear.value = 0;
     drsStatus.value = false;
+
+    // Stop the synthesized engine audio.
+    engineAudioService.stop();
 
     const message = t("msg.engineStopped");
     await audioService.playSound("engineStop");
@@ -638,6 +777,7 @@ export function useCar() {
 
     engineStatus.value = false;
     rpm.value = 0;
+    currentGear.value = 0;
     drsStatus.value = false;
     overtakeActive.value = false;
     tireLife.value = 100;
@@ -663,6 +803,10 @@ export function useCar() {
     weather.value = WEATHER_CONDITIONS.DRY.label;
     carDamage.value = 0;
     damageWarned.value = false;
+
+    // Reset the segment tracker for the start/finish straight.
+    lastSegmentIndex = -1;
+    currentSegmentIndex.value = 0;
 
     // Reset the AI rival but keep it enabled at its chosen difficulty so a
     // reset re-runs the same matchup. setAiDifficulty/disableAi change those.
@@ -704,6 +848,7 @@ export function useCar() {
         clearInterval(simulationInterval);
         simulationInterval = null;
       }
+      engineAudioService.stop();
     });
   }
 
@@ -712,6 +857,8 @@ export function useCar() {
     // State
     engineStatus,
     rpm,
+    currentGear,
+    currentSegmentIndex,
     drsStatus,
     overtakeActive,
     tireLife,

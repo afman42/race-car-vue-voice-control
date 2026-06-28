@@ -65,6 +65,27 @@
           ref="trackPath"
           d="M 20 10 H 80 A 20 20 0 0 1 80 50 H 20 A 20 20 0 0 1 20 10 Z"
         ></path>
+        <!-- Segment boundary markers (corner indicators) -->
+        <circle
+          v-for="(m, i) in segmentMarkers"
+          :key="`seg-${i}`"
+          :cx="m.x"
+          :cy="m.y"
+          r="2.5"
+          :class="[
+            'seg-boundary',
+            m.isCorner ? 'corner' : 'straight',
+            m.speed ? `speed-${m.speed}` : '',
+          ]"
+        ></circle>
+        <!-- Start/finish line -->
+        <line
+          class="start-finish"
+          :x1="segmentMarkers.length > 0 ? segmentMarkers[0].x : 20"
+          :y1="segmentMarkers.length > 0 ? segmentMarkers[0].y - 4 : 10"
+          :x2="segmentMarkers.length > 0 ? segmentMarkers[0].x : 20"
+          :y2="segmentMarkers.length > 0 ? segmentMarkers[0].y + 4 : 18"
+        />
         <circle
           class="track-marker player"
           :cx="playerMarker.x"
@@ -78,6 +99,17 @@
           :cy="rivalMarker.y"
           r="4"
         ></circle>
+        <!-- Segment legend (uses distinct classes to avoid counting in tests) -->
+        <g class="map-legend">
+          <circle cx="75" cy="7" r="2" class="legend-dot dot-straight" />
+          <text x="79" y="10" class="legend-label">{{ t("ui.segStraight") }}</text>
+          <circle cx="75" cy="15" r="2" class="legend-dot dot-corner-slow" />
+          <text x="79" y="18" class="legend-label">{{ t("ui.segCornerSlow") }}</text>
+          <circle cx="75" cy="23" r="2" class="legend-dot dot-corner-medium" />
+          <text x="79" y="26" class="legend-label">{{ t("ui.segCornerMedium") }}</text>
+          <circle cx="75" cy="31" r="2" class="legend-dot dot-corner-fast" />
+          <text x="79" y="34" class="legend-label">{{ t("ui.segCornerFast") }}</text>
+        </g>
       </svg>
     </div>
 
@@ -108,6 +140,38 @@
         <h2>{{ t("ui.engine") }}</h2>
         <p :class="['status', engineStatus ? 'on' : 'off']">
           {{ engineStatus ? t("ui.on") : t("ui.off") }}
+        </p>
+      </div>
+      <div class="display-item gear-display">
+        <h2>{{ t("ui.gear") }}</h2>
+        <div class="gear-indicator" :class="{ shifting: gearFlash }">
+          <span class="gear-number" :class="currentGear > 0 ? 'engaged' : 'neutral'">
+            {{ currentGear > 0 ? currentGear : 'N' }}
+          </span>
+        </div>
+        <div class="shift-lights">
+          <span
+            v-for="i in 5"
+            :key="i"
+            class="shift-led"
+            :class="{
+              active: rpm > CAR_SETTINGS.GEAR_SHIFT_RPM - (5 - i) * 600,
+              blink: rpm >= CAR_SETTINGS.GEAR_SHIFT_RPM - 200 && rpm < CAR_SETTINGS.GEAR_SHIFT_RPM,
+              shift: rpm >= CAR_SETTINGS.GEAR_SHIFT_RPM,
+            }"
+          ></span>
+        </div>
+      </div>
+      <div class="display-item segment-display">
+        <h2>{{ t("ui.segment") }}</h2>
+        <p
+          class="segment-badge"
+          :class="[
+            currentSegmentType,
+            currentSegmentSpeed ? `speed-${currentSegmentSpeed}` : '',
+          ]"
+        >
+          {{ currentSegmentLabel }}
         </p>
       </div>
       <div class="display-item">
@@ -280,11 +344,13 @@ import ttsService from "@/services/textToSpeechService";
 import { useI18n } from "@/i18n";
 import { CAR_SETTINGS } from "@/config";
 import { formatPosition } from "@/utils/raceStanding";
+import { findSegmentAtProgress } from "@/composables/useCar";
 
 // --- 1. Get All Car Logic & State from the Composable ---
 const {
   engineStatus,
   rpm,
+  currentGear,
   drsStatus,
   overtakeActive,
   tireStatus,
@@ -297,6 +363,7 @@ const {
   engineTemp,
   tempStatus,
   currentLap,
+  lapProgress,
   raceFinished,
   isLowBattery,
   isLowFuel,
@@ -315,6 +382,7 @@ const {
   standings,
   playerLoopPos,
   rivalLoopPos,
+  currentSegmentIndex,
   startEngine,
   stopEngine,
   activateDrs,
@@ -376,6 +444,20 @@ watch(locale, () => {
 const overtakeRemaining = ref(0);
 let overtakeCountdownInterval = null;
 
+// Gear shift flash animation trigger.
+const gearFlash = ref(false);
+let gearFlashTimeout = null;
+
+watch(currentGear, () => {
+  if (currentGear.value > 0) {
+    gearFlash.value = true;
+    if (gearFlashTimeout) clearTimeout(gearFlashTimeout);
+    gearFlashTimeout = setTimeout(() => {
+      gearFlash.value = false;
+    }, 300);
+  }
+});
+
 // --- 3. DOM-Specific Logic (SVG Gauge Measurement) ---
 const gaugeNeedlePath = ref(null);
 const gaugeCircumference = ref(0);
@@ -422,6 +504,47 @@ const pointAt = (fraction) => {
 
 const playerMarker = computed(() => pointAt(playerLoopPos.value));
 const rivalMarker = computed(() => pointAt(rivalLoopPos.value));
+
+// Pre-compute segment boundary positions along the track path (0..1).
+// Used to render colored markers on the SVG track map.
+const segmentBoundaries = computed(() => {
+  let accumulated = 0;
+  const boundaries = [];
+  for (const seg of CAR_SETTINGS.TRACK_LAYOUT) {
+    accumulated += seg.length;
+    boundaries.push(accumulated / CAR_SETTINGS.LAP_DISTANCE);
+  }
+  // The last boundary equals 1.0 (start/finish line), which is the same as 0.
+  return boundaries;
+});
+
+// Derive the current track segment directly from lapProgress so the UI stays
+// in sync even when lapProgress is set manually (important for tests).
+const currentSegmentInfo = computed(() => findSegmentAtProgress(lapProgress.value));
+const currentSegmentType = computed(() => currentSegmentInfo.value.segment.type);
+const currentSegmentSpeed = computed(() => currentSegmentInfo.value.segment.speed || null);
+const currentSegmentLabel = computed(() => {
+  if (currentSegmentType.value === "straight") return t("ui.segStraight");
+  if (currentSegmentSpeed.value === "slow") return t("ui.segCornerSlow");
+  if (currentSegmentSpeed.value === "medium") return t("ui.segCornerMedium");
+  if (currentSegmentSpeed.value === "fast") return t("ui.segCornerFast");
+  return t("ui.segStraight");
+});
+
+// Compute marker positions for each segment boundary on the SVG path.
+const segmentMarkers = computed(() => {
+  return segmentBoundaries.value.map((frac, i) => {
+    const seg = CAR_SETTINGS.TRACK_LAYOUT[i % CAR_SETTINGS.TRACK_LAYOUT.length];
+    const isCorner = seg.type === "corner";
+    return {
+      frac,
+      x: pointAt(frac).x,
+      y: pointAt(frac).y,
+      isCorner,
+      speed: seg.speed || null,
+    };
+  });
+});
 
 // Position badge text derived from the shared standings computed.
 const positionLabel = computed(() =>
@@ -632,6 +755,7 @@ const handleError = (error) => {
 onUnmounted(() => {
   speechService.stopListening();
   if (overtakeCountdownInterval) clearInterval(overtakeCountdownInterval);
+  if (gearFlashTimeout) clearTimeout(gearFlashTimeout);
 });
 </script>
 
@@ -807,10 +931,40 @@ h1 {
   font-family: monospace;
 }
 
+.segment-display {
+  grid-column: span 1;
+}
+.segment-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.segment-badge.straight {
+  color: #111;
+  background-color: #2ecc40;
+}
+.segment-badge.corner.speed-slow {
+  color: #fff;
+  background-color: #ff4136;
+}
+.segment-badge.corner.speed-medium {
+  color: #111;
+  background-color: #ffdc00;
+}
+.segment-badge.corner.speed-fast {
+  color: #111;
+  background-color: #ff851b;
+}
+
 .track-map {
   margin-bottom: 1.5rem;
   display: flex;
   justify-content: center;
+  position: relative;
 }
 .track-svg {
   width: 70%;
@@ -829,8 +983,64 @@ h1 {
 }
 .track-marker.player {
   fill: #00ffff;
+  filter: drop-shadow(0 0 3px #00ffff);
 }
 .track-marker.rival {
+  fill: #ff851b;
+  filter: drop-shadow(0 0 3px #ff851b);
+}
+
+/* Segment boundary markers on the track map */
+.seg-boundary {
+  stroke-width: 0;
+}
+.seg-boundary.straight {
+  fill: #2ecc40;
+}
+.seg-boundary.corner.speed-slow {
+  fill: #ff4136;
+}
+.seg-boundary.corner.speed-medium {
+  fill: #ffdc00;
+}
+.seg-boundary.corner.speed-fast {
+  fill: #ff851b;
+}
+
+/* Start/finish line */
+.start-finish {
+  stroke: #fff;
+  stroke-width: 1.2;
+  stroke-dasharray: 2 2;
+  opacity: 0.7;
+}
+
+/* Track map legend */
+.map-legend {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.track-svg:hover .map-legend {
+  opacity: 0.8;
+}
+.legend-label {
+  fill: #ccc;
+  font-size: 2.5px;
+  font-family: "Orbitron", sans-serif;
+}
+.legend-dot {
+  stroke: none;
+}
+.legend-dot.dot-straight {
+  fill: #2ecc40;
+}
+.legend-dot.dot-corner-slow {
+  fill: #ff4136;
+}
+.legend-dot.dot-corner-medium {
+  fill: #ffdc00;
+}
+.legend-dot.dot-corner-fast {
   fill: #ff851b;
 }
 
@@ -951,6 +1161,71 @@ h1 {
 .lb-time {
   color: #ffdc00;
   font-family: monospace;
+}
+
+.gear-display {
+  grid-column: span 1;
+}
+.gear-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+.gear-number {
+  font-size: 2.4rem;
+  font-weight: bold;
+  line-height: 1;
+  transition:
+    color 0.15s,
+    transform 0.15s;
+}
+.gear-number.engaged {
+  color: #00ffff;
+}
+.gear-number.neutral {
+  color: #ff4136;
+}
+.gear-indicator.shifting .gear-number {
+  color: #ffdc00;
+  transform: scale(1.3);
+}
+
+.shift-lights {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 0.3rem;
+}
+.shift-led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #333;
+  transition:
+    background-color 0.2s,
+    box-shadow 0.2s;
+}
+.shift-led.active {
+  background-color: #2ecc40;
+  box-shadow: 0 0 6px #2ecc40;
+}
+.shift-led.active:nth-child(4),
+.shift-led.active:nth-child(5) {
+  background-color: #ffdc00;
+  box-shadow: 0 0 6px #ffdc00;
+}
+.shift-led.blink {
+  animation: led-blink 0.15s ease-in-out 3;
+}
+.shift-led.shift {
+  background-color: #ff4136;
+  box-shadow: 0 0 8px #ff4136;
+  animation: led-blink 0.1s ease-in-out 4;
+}
+@keyframes led-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 /* AI rival board: tinted to distinguish it from the player's own laps. */

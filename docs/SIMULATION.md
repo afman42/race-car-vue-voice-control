@@ -11,7 +11,8 @@ The car simulation runs on a **5-second tick interval** (`CAR_SETTINGS.SIMULATIO
 | **Battery** | Recharges based on ERS mode | Base 0.2%/tick; Hotlap 0.3×, Balanced 1.0×, Charge 2.0× |
 | **Engine Temp** | Rises with RPM + overtaking, cools toward 90°C ambient | Rise 12°C/tick, Cool 8°C/tick, Overtake +10°C/tick |
 | **Damage** | +4/tick while overheating, +2/tick on destroyed tires | Repaired only in pits; max 40% pace penalty at 100 damage |
-| **Lap Progress** | Distance accrues proportional to RPM × grip × pace factor | 100 distance units per lap; 10 laps total |
+| **Gears** | RPM climbs 1500/tick; auto-upshift at 7500 RPM drops to 5000 RPM. Track-aware: upshifts on straights, downshifts into corners (2 gears/tick) | 7 gears with speed multipliers from 0.45× (1st) to 1.55× (7th). Corner targets: slow=2nd, medium=3rd, fast=4th |
+| **Lap Progress** | Distance accrues proportional to RPM × gear ratio × grip × pace × cornerFactor | 100 distance units per lap; 10 laps total. Corners capped at 55% speed |
 | **Lap Timing** | +1000ms simulated time per tick | Top 5 fastest laps kept on leaderboard |
 | **AI Rival** | Independent lap-time generator (no physics) | Base 8000ms/lap; difficulty sets pace ± variance |
 
@@ -46,8 +47,13 @@ The car simulation runs on a **5-second tick interval** (`CAR_SETTINGS.SIMULATIO
 
 | Scenario | Behaviour |
 |---|---|
-| **Engine stall** (fuel = 0) | RPM drops to 0, DRS & overtake disabled, engine must be restarted after refuel |
-| **Overheat power cut** (temp ≥ 130°C) | RPM drops to idle, DRS & overtake disabled, recovers when temp drops below critical |
+| **Engine stall** (fuel = 0) | RPM drops to 0, gear to neutral, DRS & overtake disabled, engine must be restarted after refuel |
+| **Overheat power cut** (temp ≥ 130°C) | RPM drops to idle, gear to neutral, DRS & overtake disabled, recovers when temp drops below critical |
+| **Engine start** | Gear engages 1st at 4000 RPM (race-ready), RPM climbs 1500/tick toward 7500 shift point |
+| **Auto-upshift (straight)** | When RPM ≥ 7500 and gear < target (7 on straights), shifts up and drops RPM to 5000 |
+| **Auto-downshift (corner)** | When gear > corner target (2/3/4), drops 2 gears/tick toward target |
+| **Safety downshift** | When RPM ≤ 1250 and gear > 1, shifts down and RPM rises to 5000 |
+| **Track segment crossing** | Corner speed cap (55%) applies to the segment the car starts the tick in |
 | **Overtake denied** | Fails if battery < 20%, engine off, or engine overheating |
 | **Tire changes** | Only allowed in pits (engine must be off) |
 | **Warning latches** | Each critical threshold triggers exactly one voice alert per crossing |

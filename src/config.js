@@ -62,6 +62,36 @@ export const CAR_SETTINGS = {
   // AI rival: the reference lap time (ms) a perfect rival targets. Difficulty
   // scales this by paceFactor (higher = faster) and adds random variance.
   AI_BASE_LAP_MS: 8000,
+
+  // Gear simulation: when the car is moving, RPM climbs each tick and
+  // automatically upshifts when it hits the shift point, dropping RPM to
+  // the next gear's sweet spot. Downshifts happen when RPM drops too low.
+  GEAR_COUNT: 7, // number of forward gears (1-7)
+  // Speed multiplier per gear: higher gears translate RPM into more speed.
+  // Index 0 is unused (neutral).
+  GEAR_RATIOS: [0, 0.45, 0.60, 0.78, 0.95, 1.15, 1.35, 1.55],
+  GEAR_SHIFT_RPM: 7500, // RPM threshold that triggers an upshift
+  GEAR_DROP_RPM: 5000, // RPM drops to this after an upshift
+  GEAR_RPM_CLIMB: 1500, // RPM gained per simulation tick while in gear
+  GEAR_START_RPM: 4000, // RPM when the engine starts (car is "ready to race")
+
+  // Track layout: segments that make up each lap, defining where the car
+  // upshifts (straights) and downshifts (corners). Lengths must sum to
+  // LAP_DISTANCE (100) for clean lap wrapping.
+  TRACK_LAYOUT: [
+    { type: "straight", length: 25 },
+    { type: "corner", length: 8, speed: "slow" },
+    { type: "straight", length: 12 },
+    { type: "corner", length: 10, speed: "medium" },
+    { type: "straight", length: 15 },
+    { type: "corner", length: 10, speed: "fast" },
+    { type: "straight", length: 20 },
+  ],
+  // Speed multiplier applied when cornering (capped progress per tick).
+  // This simulates the loss of pace through turns even in the correct gear.
+  CORNER_SPEED_CAP: 0.55, // fraction of straight speed while cornering
+  // Target gears for each corner type (downshift target).
+  CORNER_TARGET_GEARS: { slow: 2, medium: 3, fast: 4 },
 };
 
 // AI rival difficulty. paceFactor scales the rival's lap pace (1.0 = reference,
