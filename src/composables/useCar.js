@@ -209,7 +209,8 @@ export function useCar() {
 
     if (currentGear.value === 0) {
       currentGear.value = 1;
-      engineAudioService.onShift();
+      // Engaging first gear from neutral — use the upshift sound.
+      engineAudioService.onShiftUp();
       return;
     }
 
@@ -244,9 +245,14 @@ export function useCar() {
       rpm.value = CAR_SETTINGS.GEAR_DROP_RPM;
     }
 
-    // Play a shift blip if the gear actually changed.
+    // Play the appropriate shift sound — upshifts are quick and high-pitched,
+    // downshifts are deeper and more aggressive (rev-matched blip).
     if (currentGear.value !== prevGear) {
-      engineAudioService.onShift();
+      if (currentGear.value > prevGear) {
+        engineAudioService.onShiftUp();
+      } else {
+        engineAudioService.onShiftDown();
+      }
     }
   };
 

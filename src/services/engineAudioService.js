@@ -58,30 +58,85 @@ const createOscillators = () => {
   }
 };
 
-// Play a short "blip" sound to simulate a gear shift.
-const playShiftBlip = () => {
+// Play a quick, higher-pitched blip for upshifts — short burst, rising then
+// dropping, like a Formula 1 pneumatic quick-shift.
+const playShiftUp = () => {
   if (!audioCtx || !isActive) return;
-
   try {
+    const now = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    const now = audioCtx.currentTime;
-
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(800, now);
-    osc.frequency.exponentialRampToValueAtTime(400, now + 0.08);
-
-    gain.gain.setValueAtTime(0.15, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-
+    osc.frequency.setValueAtTime(1200, now);
+    osc.frequency.exponentialRampToValueAtTime(600, now + 0.06);
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
-
     osc.start(now);
-    osc.stop(now + 0.1);
-  } catch {
-    // Silently skip if audio context is in a bad state.
-  }
+    osc.stop(now + 0.08);
+  } catch { /* skip */ }
+};
+
+// Play a deeper, more aggressive blip for downshifts — lower pitch with a
+// longer duration and a bit of grumble (sawtooth), simulating a rev-matched
+// downshift blip. Augmented with a backfire crackle: a noise burst with two
+// popping overtones that mimic unburnt fuel igniting in the exhaust.
+const playShiftDown = () => {
+  if (!audioCtx || !isActive) return;
+  try {
+    const now = audioCtx.currentTime;
+
+    // --- Main downshift blip: sawtooth grumble ---
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(300, now);
+    osc.frequency.exponentialRampToValueAtTime(500, now + 0.05);
+    osc.frequency.exponentialRampToValueAtTime(250, now + 0.15);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.18);
+
+    // --- Backfire crackle: brief white-noise burst ---
+    const sampleRate = audioCtx.sampleRate;
+    const burstLength = Math.floor(sampleRate * 0.12); // 120ms of noise
+    const noiseBuffer = audioCtx.createBuffer(1, burstLength, sampleRate);
+    const noiseData = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < burstLength; i++) {
+      // Exponential decay envelope: loud pop then rapid fade
+      const env = Math.exp(-i / (sampleRate * 0.025));
+      noiseData[i] = (Math.random() * 2 - 1) * env;
+    }
+    const noiseSource = audioCtx.createBufferSource();
+    noiseSource.buffer = noiseBuffer;
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0.18, now + 0.02);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    noiseSource.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+    noiseSource.start(now + 0.02);
+    noiseSource.stop(now + 0.15);
+
+    // --- Pop overtones: two short sine bursts for the "crackle" ---
+    for (let p = 0; p < 2; p++) {
+      const popOsc = audioCtx.createOscillator();
+      const popGain = audioCtx.createGain();
+      const popTime = now + 0.03 + p * 0.04;
+      popOsc.type = 'sine';
+      popOsc.frequency.setValueAtTime(p === 0 ? 1800 : 2200, popTime);
+      popOsc.frequency.exponentialRampToValueAtTime(800, popTime + 0.03);
+      popGain.gain.setValueAtTime(0.08, popTime);
+      popGain.gain.exponentialRampToValueAtTime(0.001, popTime + 0.04);
+      popOsc.connect(popGain);
+      popGain.connect(audioCtx.destination);
+      popOsc.start(popTime);
+      popOsc.stop(popTime + 0.04);
+    }
+  } catch { /* skip */ }
 };
 
 export default {
@@ -171,10 +226,17 @@ export default {
   },
 
   /**
-   * Call this when a gear shift happens to play a brief blip.
+   * Play a quick upshift blip (higher pitch, short burst).
    */
-  onShift() {
-    playShiftBlip();
+  onShiftUp() {
+    playShiftUp();
+  },
+
+  /**
+   * Play a deeper downshift blip (sawtooth, rev-matched feel).
+   */
+  onShiftDown() {
+    playShiftDown();
   },
 
   /**

@@ -59,8 +59,10 @@ export default {
       };
 
       utterance.onerror = (event) => {
-        console.error("SpeechSynthesisUtterance.onerror", event);
-        reject(event); // Reject on error
+        console.warn("SpeechSynthesisUtterance.onerror", event);
+        // Never reject — speech errors (e.g. no voices in headless) should not
+        // crash command processing. The app continues without audible feedback.
+        resolve();
       };
 
       // Pick a voice matching the active language; set the lang regardless so

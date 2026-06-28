@@ -11,7 +11,7 @@ src/
 │
 ├── components/
 │   ├── RaceControl.vue              # Main UI: dashboard, track map, controls, command dispatch
-│   └── RaceControl.spec.js          # Component integration tests
+│   └── RaceControl.spec.js          # Component integration tests (15 tests)
 │
 ├── composables/                     # Vue 3 composables (reactive state + logic)
 │   ├── useCar.js                    # Core singleton: car state, simulation, all public actions
@@ -34,7 +34,12 @@ src/
 └── services/                        # Browser API wrappers
     ├── audioService.js              # Preload + play sound effects (graceful on failure)
     ├── speechRecognitionService.js  # Web Speech API recognition wrapper (auto-restart)
-    └── textToSpeechService.js       # Web Speech API synthesis wrapper (voice matching)
+    ├── textToSpeechService.js       # Web Speech API synthesis wrapper (voice matching)
+    └── engineAudioService.js        # Synthesized engine pitch via Web Audio API
+
+e2e/                                 # Playwright end-to-end tests
+├── race-control.spec.js             # 28 tests: dashboard, engine, AI, DRS, etc.
+└── race-app.spec.js                 # 38 tests: comprehensive app behavior
 ```
 
 ---
@@ -47,9 +52,7 @@ All state is defined at **module scope** (outside the composable function), so e
 
 ### AI as a Lap-Time Generator
 
-The AI rival (`useAiRival.js`) is modeled as a **lap-time generator**, not a full physics car. It has no engine, fuel, tires, or temperature simulation. Each tick it accrues simulated time toward a target lap time (determined by difficulty), and on completion posts a time to its own leaderboard.
-
-This keeps the human car's state completely independent and avoids duplicating the complex physics engine.
+The AI rival (`useAiRival.js`) is modeled as a **lap-time generator**, not a full physics car. It has no engine, fuel, tires, or temperature simulation. Each tick it accrues simulated time toward a target lap time (determined by difficulty), and on completion posts a time to its own leaderboard. This keeps the human car's state completely independent.
 
 ### Two-Pass Command Matching
 
@@ -62,7 +65,11 @@ Short keywords (< 4 chars) require exact matches to prevent false positives (e.g
 
 ### Graceful Audio Handling
 
-The `audioService.js` tracks sound load failures. `playSound()` silently resolves for broken sounds instead of throwing, so voice interactions remain smooth even when audio assets are missing.
+Both `audioService.js` and `textToSpeechService.js` are designed to **never crash the app**:
+
+- `audioService.js` tracks sound load failures and silently resolves for broken sounds
+- `textToSpeechService.js` resolves on error instead of rejecting, so headless browsers (Playwright) don't break command processing
+- The `runCommand` function in `RaceControl.vue` wraps each action in a try-catch as a safety net
 
 ### Warning Latches
 
@@ -70,7 +77,7 @@ Each critical threshold (fuel, battery, temperature, damage) triggers exactly **
 
 ### Auto-Restarting Speech Recognition
 
-After each successful command, the speech recognition service automatically restarts after a 500ms delay. Manually clicking "Stop Radio" sets a flag that prevents auto-restart.
+After each successful command, the speech recognition service automatically restarts after a 500ms delay. Manually clicking "Stop Radio" / "Hentikan Radio" sets a flag that prevents auto-restart.
 
 ---
 
@@ -87,22 +94,51 @@ commandRouter.matchCommand(transcript, locale)
 command key (e.g. "startEngine", "fuelMixLean")
     ↓
 RaceControl.vue → commandActions[command]()
-    ↓
-useCar.js action (e.g. startEngine, setFuelMix)
-    → updates reactive state
-    → speaks response via TTS
-    → returns status message
+    → wrapped in try-catch → updates reactive state
+    → speaks response via TTS → returns status message
     ↓
 Dashboard updates reactively via Vue computed properties
 ```
 
+---
+
+## Simulation Loop
+
+```
+Engine ON or AI enabled
+    ↓
+2-second tick interval (setInterval)
+    ↓
+runSimulationTick():
+    ├── Fuel consumption (RPM × mix rate)
+    ├── Tire wear (RPM × compound × weather)
+    ├── Battery recharge (ERS mode)
+    ├── Engine temperature (RPM + overtake - cooling)
+    ├── Damage accrual (overheat + worn tires)
+    ├── Lap progress (RPM × gear × grip × pace)
+    ├── AI rival tick
+    ├── Warning checks (fuel, battery, temp, damage)
+    ├── RPM climb (+1000/tick)
+    ├── Track-aware gear shifting (autoShift)
+    └── Engine stall / overheat check
+```
+
+---
+
 ## Services
 
 ### `audioService.js`
-- Pre-loads Audio elements at startup
+- Pre-loads `Audio` elements at startup
 - Tracks loaded sounds in a `Set`
 - `playSound(name)` silently resolves for failed loads
 - Falls back gracefully when `Audio` API is unavailable (e.g. server-side rendering)
+
+### `engineAudioService.js`
+- Synthesizes a continuous engine pitch via `OscillatorNode` + gain
+- `start(rpm)` / `setRpm(rpm)` / `stop()` for smooth pitch transitions
+- `onShiftUp()` / `onShiftDown()` play quick blip sounds with distinct character
+  - Upshifts: short sine burst (1200→600 Hz)
+  - Downshifts: sawtooth grumble + backfire crackle with white-noise burst
 
 ### `speechRecognitionService.js`
 - Wraps `window.SpeechRecognition` / `webkitSpeechRecognition`
@@ -114,4 +150,22 @@ Dashboard updates reactively via Vue computed properties
 - Wraps `window.speechSynthesis`
 - Picks a voice matching the current language (prefers exact BCP-47 match)
 - Cancels any in-progress speech before starting new utterances
-- Rate set to 1.1x for natural pacing
+- **Never rejects** — errors are logged as warnings and resolved silently
+- Rate set to 1.1× for natural pacing
+
+---
+
+## Configuration
+
+All tunable constants live in [`src/config.js`](../src/config.js). Key sections:
+
+| Export | Purpose |
+|---|---|
+| `CAR_SETTINGS` | Core simulation: RPM, gears, fuel, tires, battery, temperature, damage, lap timing, track layout |
+| `AI_DIFFICULTY` | EASY / MEDIUM / HARD pace factors and variance |
+| `FUEL_MIXES` | LEAN / STANDARD / RICH display labels |
+| `TIRE_COMPOUNDS` | SOFT / MEDIUM / HARD wear factors |
+| `ERS_MODES` | HOTLAP / BALANCED / CHARGE recharge factors |
+| `WEATHER_CONDITIONS` | DRY / CLOUDY / WET / STORM grip, wear, temp bias |
+
+See [`docs/SIMULATION.md`](SIMULATION.md) for the full reference.

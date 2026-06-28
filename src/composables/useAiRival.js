@@ -103,9 +103,12 @@ const setDifficulty = async (level) => {
     return message;
   }
 
+  // Reset progress BEFORE enabling so the simulation watcher sees
+  // finished=false before enabled=true, avoiding a race where the
+  // watcher runs mid-transition and skips starting the sim.
+  resetProgress();
   difficulty.value = AI_DIFFICULTY[resolvedKey].label;
   enabled.value = true;
-  resetProgress();
 
   const message = t("msg.aiEnabled", { label: AI_DIFFICULTY[resolvedKey].label });
   await ttsService.speak(message);

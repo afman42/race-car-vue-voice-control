@@ -272,7 +272,7 @@
         <h2>{{ t("ui.bestLap") }}</h2>
         <p class="status info">{{ formatLapTime(bestLapTime) }}</p>
       </div>
-      <div class="display-item">
+      <div class="display-item" :class="{ 'ai-active': aiEnabled }">
         <h2>{{ t("ui.aiRival") }}</h2>
         <p :class="['status', aiEnabled ? 'on' : 'off']">
           <template v-if="aiEnabled">
@@ -329,6 +329,7 @@
           v-for="ctrl in manualControls"
           :key="ctrl.command"
           class="ctrl-button"
+          :class="{ 'active-difficulty': ctrl.command === activeAiCommand }"
           @click="runCommand(ctrl.command)"
         >
           {{ t(ctrl.labelKey) }}
@@ -453,6 +454,9 @@ watch(locale, () => {
 // Overtake countdown (percent remaining, 100 -> 0).
 const overtakeRemaining = ref(0);
 let overtakeCountdownInterval = null;
+
+// Track which AI command was last selected (for button highlighting).
+const activeAiCommand = ref(null);
 
 // Gear shift flash animation trigger.
 const gearFlash = ref(false);
@@ -632,6 +636,9 @@ const manualControls = [
   { labelKey: "btn.lapStatus", command: "lapStatus" },
   { labelKey: "btn.position", command: "position" },
   { labelKey: "btn.tempStatus", command: "tempStatus" },
+  { labelKey: "btn.fuelStatus", command: "fuelStatus" },
+  { labelKey: "btn.batteryStatus", command: "batteryStatus" },
+  { labelKey: "btn.weatherStatus", command: "weatherStatus" },
   { labelKey: "btn.bestLap", command: "bestLap" },
   { labelKey: "btn.damageStatus", command: "damageStatus" },
   { labelKey: "btn.weatherDry", command: "weatherDry" },
@@ -654,9 +661,19 @@ const runCommand = async (command) => {
   if (!command || !commandActions[command]) {
     return t("msg.notRecognized", { transcript: "" });
   }
-  const message = await commandActions[command]();
+  let message;
+  try {
+    message = await commandActions[command]();
+  } catch (err) {
+    console.warn("Command action failed:", command, err);
+    message = t("msg.notRecognized", { transcript: "" });
+  }
   if (command === "overtake" && overtakeActive.value) {
     startOvertakeCountdown();
+  }
+  // Track the last AI difficulty command so the active button stays highlighted.
+  if (command.startsWith("ai") && command !== "aiStatus") {
+    activeAiCommand.value = command;
   }
   statusMessage.value = message;
   return message;
@@ -1246,6 +1263,23 @@ h1 {
 @keyframes led-blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
+}
+
+/* AI rival tile: highlight when active */
+.display-item.ai-active {
+  border: 1px solid #ff851b;
+  border-radius: 8px;
+  padding: 0.3rem;
+  background: rgba(255, 133, 27, 0.08);
+}
+
+/* AI control button: highlight the active difficulty.
+   Only AI buttons can get the active-difficulty class via activeAiCommand tracking,
+   so no need for an AI-specific class selector here. */
+.ctrl-button.active-difficulty {
+  border-color: #ff851b;
+  background-color: rgba(255, 133, 27, 0.15);
+  color: #ff851b;
 }
 
 /* AI rival board: tinted to distinguish it from the player's own laps. */

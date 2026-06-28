@@ -1,16 +1,24 @@
 # Testing
 
-The project uses **Vitest** with **jsdom** and **@vue/test-utils**.
+The project runs two test suites: **unit tests** (Vitest) and **end-to-end tests** (Playwright).
 
-## Running Tests
+---
+
+## Quick Commands
 
 ```bash
-pnpm test        # Watch mode
-pnpm test:run    # Single run
-pnpm test:ui     # Vitest UI dashboard
+pnpm test:run         # Unit tests (Vitest, single run) — ~159 tests
+pnpm test             # Unit tests in watch mode
+pnpm test:ui          # Vitest UI dashboard
+pnpm test:e2e         # E2E tests (Playwright) — ~66 tests total
+pnpm test:e2e:ui      # Playwright UI mode (interactive debug)
 ```
 
-## Test Suite (159 tests across 11 files)
+> **E2E tests require the dev server to be running** — Playwright auto-starts it via `webServer` config.
+
+---
+
+## Unit Tests — Vitest (159 tests across 11 files)
 
 ### Core Composable Tests
 
@@ -39,6 +47,23 @@ pnpm test:ui     # Vitest UI dashboard
 
 ---
 
+## E2E Tests — Playwright (66 tests across 2 files)
+
+| Test File | Tests | What It Covers |
+|---|---|---|
+| `race-control.spec.js` | 28 | Initial state, engine & gear simulation, AI difficulty buttons, DRS/overtake, weather, fuel/ERS/tires, status queries, language switch, track map, manual controls, reset, full race flow |
+| `race-app.spec.js` | 38 | Initial state, engine & gears, AI rival difficulty, manual controls (all subsystems), language toggle, lap timing & leaderboard, weather cycling, status commands, race progression, reset, AI gap tracking |
+
+### E2E Test Patterns
+
+- All tests start fresh via `page.goto("/")` (no `beforeEach` in `race-app.spec.js`, one in `race-control.spec.js`)
+- Assertions use Playwright's auto-retrying matchers (`toBeVisible`, `toContainText`, etc.)
+- Tests that depend on simulation time (gear shifts, lap completion) use generous timeouts and `test.setTimeout()` when needed
+- Button clicks use `page.getByRole("button", { name: "Exact Text" })` for precision
+- Dashboard tiles are selected via `.display-item` filter locators to avoid strict-mode ambiguity
+
+---
+
 ## Testing Patterns
 
 ### Singleton State Reset
@@ -53,7 +78,7 @@ if (aiEnabled.value) await disableAi();
 
 ### Simulation Edge Cases
 
-To test simulation ticks without waiting 5 seconds, the `runSimulationTick` function is exposed and called directly:
+To test simulation ticks without waiting 2 seconds, the `runSimulationTick` function is exposed and called directly:
 
 ```js
 const { runSimulationTick, fuelLevel } = useCar();

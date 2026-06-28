@@ -1,19 +1,21 @@
 # Simulation Model
 
-The car simulation runs on a **5-second tick interval** (`CAR_SETTINGS.SIMULATION_TICK_MS`). Each tick updates all systems sequentially.
+The car simulation runs on a **2-second tick interval** (`CAR_SETTINGS.SIMULATION_TICK_MS`). Each tick updates all systems sequentially while the engine is on or an AI rival is still racing.
+
+---
 
 ## Systems Overview
 
 | System | Behaviour | Key Constants |
 |---|---|---|
-| **Fuel** | Consumed based on RPM × fuel mix multiplier | Lean 0.2, Standard 0.5, Rich 1.2 per tick |
-| **Tires** | Degrade from 100% → Worn; wear scales with RPM, compound, and weather | Base rate 1.5%/tick; Soft 1.6×, Medium 1.0×, Hard 0.6× |
-| **Battery** | Recharges based on ERS mode | Base 0.2%/tick; Hotlap 0.3×, Balanced 1.0×, Charge 2.0× |
-| **Engine Temp** | Rises with RPM + overtaking, cools toward 90°C ambient | Rise 12°C/tick, Cool 8°C/tick, Overtake +10°C/tick |
+| **Fuel** | Consumed based on RPM × fuel mix multiplier | Lean 0.08, Standard 0.2, Rich 0.48 per tick |
+| **Tires** | Degrade from 100% → Worn; wear scales with RPM, compound, and weather | Base rate 0.6%/tick; Soft 1.6×, Medium 1.0×, Hard 0.6× |
+| **Battery** | Recharges based on ERS mode | Base 0.08%/tick; Hotlap 0.3×, Balanced 1.0×, Charge 2.0× |
+| **Engine Temp** | Rises with RPM + overtaking, cools toward 90°C ambient | Rise 4°C/tick, Cool 3°C/tick, Overtake +4°C/tick |
 | **Damage** | +4/tick while overheating, +2/tick on destroyed tires | Repaired only in pits; max 40% pace penalty at 100 damage |
-| **Gears** | RPM climbs 1500/tick; auto-upshift at 7500 RPM drops to 5000 RPM. Track-aware: upshifts on straights, downshifts into corners (2 gears/tick) | 7 gears with speed multipliers from 0.45× (1st) to 1.55× (7th). Corner targets: slow=2nd, medium=3rd, fast=4th |
+| **Gears** | RPM climbs 1000/tick; auto-upshift at 7500 RPM drops to 5000 RPM. Track-aware: upshifts on straights, downshifts into corners (2 gears/tick) | 7 gears with speed multipliers from 0.45× (1st) to 1.55× (7th). Corner targets: slow=2nd, medium=3rd, fast=4th |
 | **Lap Progress** | Distance accrues proportional to RPM × gear ratio × grip × pace × cornerFactor | 100 distance units per lap; 10 laps total. Corners capped at 55% speed |
-| **Lap Timing** | +1000ms simulated time per tick | Top 5 fastest laps kept on leaderboard |
+| **Lap Timing** | +400ms simulated time per tick | Top 5 fastest laps kept on leaderboard |
 | **AI Rival** | Independent lap-time generator (no physics) | Base 8000ms/lap; difficulty sets pace ± variance |
 
 ---
@@ -31,6 +33,8 @@ The car simulation runs on a **5-second tick interval** (`CAR_SETTINGS.SIMULATIO
 - **Tire wear factor** scales tire degradation
 - **Temp bias** nudges engine cooling (rain cools, dry builds heat)
 
+---
+
 ## AI Rival Difficulty
 
 | Level | Pace Factor | Variance | Behaviour |
@@ -40,33 +44,37 @@ The car simulation runs on a **5-second tick interval** (`CAR_SETTINGS.SIMULATIO
 | **Hard** | 1.00 (reference) | ±3% | Consistent, fast lap times |
 | **Random** | — | — | Picks one of the above randomly |
 
-- **Pace factor** scales the base lap time (8000ms): time = base / paceFactor
+- **Pace factor** scales the base lap time (8000ms): `time = base / paceFactor`
 - **Variance** is the random fractional swing applied each lap
+
+---
 
 ## Edge Cases
 
 | Scenario | Behaviour |
 |---|---|
-| **Engine stall** (fuel = 0) | RPM drops to 0, gear to neutral, DRS & overtake disabled, engine must be restarted after refuel |
-| **Overheat power cut** (temp ≥ 130°C) | RPM drops to idle, gear to neutral, DRS & overtake disabled, recovers when temp drops below critical |
-| **Engine start** | Gear engages 1st at 4000 RPM (race-ready), RPM climbs 1500/tick toward 7500 shift point |
-| **Auto-upshift (straight)** | When RPM ≥ 7500 and gear < target (7 on straights), shifts up and drops RPM to 5000 |
-| **Auto-downshift (corner)** | When gear > corner target (2/3/4), drops 2 gears/tick toward target |
-| **Safety downshift** | When RPM ≤ 1250 and gear > 1, shifts down and RPM rises to 5000 |
-| **Track segment crossing** | Corner speed cap (55%) applies to the segment the car starts the tick in |
-| **Overtake denied** | Fails if battery < 20%, engine off, or engine overheating |
-| **Tire changes** | Only allowed in pits (engine must be off) |
-| **Warning latches** | Each critical threshold triggers exactly one voice alert per crossing |
-| **Post-race** | Simulation stops after final lap; AI can still finish independently |
-| **Battery cap** | Recharge stops at 100% |
+| **Engine stall** (fuel = 0) | RPM drops to 0, gear to neutral, DRS & overtake disabled. Engine must be restarted after a pit stop refuel. |
+| **Overheat power cut** (temp ≥ 130°C) | RPM drops to idle, gear to neutral, DRS & overtake disabled. Recovers when temp drops below critical. |
+| **Engine start** | Gear engages 1st at 4000 RPM (race-ready). RPM climbs 1000/tick toward the 7500 shift point. |
+| **Auto-upshift (straight)** | When RPM ≥ 7500 and gear < target (7 on straights), shifts up and drops RPM to 5000. |
+| **Auto-downshift (corner)** | When gear > corner target (2nd/3rd/4th), drops 2 gears/tick toward target. |
+| **Safety downshift** | When RPM ≤ 1250 and gear > 1, shifts down to prevent stalling. |
+| **Corner speed cap** | Speed is capped at 55% while cornering. Segment crossing recalculates mid-tick. |
+| **Overtake denied** | Fails if battery < 20%, engine is off, or engine is overheating. |
+| **Tire changes** | Only allowed in pits (engine must be off). |
+| **Warning latches** | Each critical threshold triggers exactly one voice alert per crossing. |
+| **Post-race** | Simulation stops after the final lap. The AI rival can still finish independently. |
+| **Battery cap** | Recharge stops at 100%. |
+| **Pit stop** | Stops engine → waits 4s → refuels 100% → restarts engine. Repairs all damage and fits fresh tires. |
 
 ---
 
-## Configuration
+## Full Configuration
 
-All tunable constants live in [`src/config.js`](../src/config.js):
+All tunable constants live in [`src/config.js`](../src/config.js).
 
 ### `CAR_SETTINGS`
+
 ```js
 {
   RPM_IDLE: 750,
@@ -75,14 +83,16 @@ All tunable constants live in [`src/config.js`](../src/config.js):
   OVERTAKE_DURATION_MS: 8000,
   OVERTAKE_BATTERY_COST: 20,
   PIT_STOP_DURATION_MS: 4000,
-  SIMULATION_TICK_MS: 5000,
-  FUEL_CONSUMPTION_RATE: { LEAN: 0.2, STANDARD: 0.5, RICH: 1.2 },
-  BATTERY_RECHARGE_RATE: 0.2,
+  SIMULATION_TICK_MS: 2000,          // 2-second tick interval
+  FUEL_CONSUMPTION_RATE: {
+    LEAN: 0.08, STANDARD: 0.2, RICH: 0.48
+  },
+  BATTERY_RECHARGE_RATE: 0.08,
   RPM_MULTIPLIER_MIN: 0.3,
   RPM_MULTIPLIER_MAX: 2.0,
   LOW_FUEL_THRESHOLD: 15,
   LOW_BATTERY_THRESHOLD: 10,
-  TIRE_WEAR_RATE: 1.5,
+  TIRE_WEAR_RATE: 0.6,
   TIRE_OPTIMAL_THRESHOLD: 70,
   TIRE_WORN_THRESHOLD: 30,
   LAP_DISTANCE: 100,
@@ -90,10 +100,10 @@ All tunable constants live in [`src/config.js`](../src/config.js):
   TEMP_AMBIENT: 90,
   TEMP_OPTIMAL_MAX: 110,
   TEMP_CRITICAL: 130,
-  TEMP_RISE_RATE: 12,
-  TEMP_COOL_RATE: 8,
-  TEMP_OVERTAKE_PENALTY: 10,
-  LAP_TIME_PER_TICK_MS: 1000,
+  TEMP_RISE_RATE: 4,
+  TEMP_COOL_RATE: 3,
+  TEMP_OVERTAKE_PENALTY: 4,
+  LAP_TIME_PER_TICK_MS: 400,
   LEADERBOARD_SIZE: 5,
   DAMAGE_OVERHEAT_RATE: 4,
   DAMAGE_WORN_TIRE_RATE: 2,
@@ -102,6 +112,27 @@ All tunable constants live in [`src/config.js`](../src/config.js):
   DAMAGE_CRITICAL_THRESHOLD: 80,
   DAMAGE_MAX_PACE_PENALTY: 0.4,
   AI_BASE_LAP_MS: 8000,
+
+  // Gear simulation
+  GEAR_COUNT: 7,
+  GEAR_RATIOS: [0, 0.45, 0.60, 0.78, 0.95, 1.15, 1.35, 1.55],
+  GEAR_SHIFT_RPM: 7500,
+  GEAR_DROP_RPM: 5000,
+  GEAR_RPM_CLIMB: 1000,
+  GEAR_START_RPM: 4000,
+
+  // Track layout (7 segments, lengths sum to 100)
+  TRACK_LAYOUT: [
+    { type: "straight", length: 25 },
+    { type: "corner", length: 8, speed: "slow" },
+    { type: "straight", length: 12 },
+    { type: "corner", length: 10, speed: "medium" },
+    { type: "straight", length: 15 },
+    { type: "corner", length: 10, speed: "fast" },
+    { type: "straight", length: 20 },
+  ],
+  CORNER_SPEED_CAP: 0.55,
+  CORNER_TARGET_GEARS: { slow: 2, medium: 3, fast: 4 },
 }
 ```
 
@@ -109,8 +140,8 @@ All tunable constants live in [`src/config.js`](../src/config.js):
 
 | Export | Purpose |
 |---|---|
-| `AI_DIFFICULTY` | EASY / MEDIUM / HARD pace factors and variance |
-| `FUEL_MIXES` | LEAN / STANDARD / RICH labels |
-| `TIRE_COMPOUNDS` | SOFT / MEDIUM / HARD wear factors |
-| `ERS_MODES` | HOTLAP / BALANCED / CHARGE recharge factors |
-| `WEATHER_CONDITIONS` | DRY / CLOUDY / WET / STORM grip, wear, temp bias |
+| `AI_DIFFICULTY` | EASY (0.80), MEDIUM (0.92), HARD (1.00) pace factors and variance |
+| `FUEL_MIXES` | LEAN = "Lean", STANDARD = "Standard", RICH = "Rich" |
+| `TIRE_COMPOUNDS` | SOFT (wear 1.6×), MEDIUM (wear 1.0×), HARD (wear 0.6×) |
+| `ERS_MODES` | HOTLAP (recharge 0.3×), BALANCED (1.0×), CHARGE (2.0×) |
+| `WEATHER_CONDITIONS` | DRY, CLOUDY, WET, STORM with grip/wear/tempBias |
