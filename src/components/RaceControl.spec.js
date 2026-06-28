@@ -32,8 +32,9 @@ const flush = async () => {
 
 describe("RaceControl.vue", () => {
   beforeEach(async () => {
-    const { resetRace } = useCar();
+    const { resetRace, disableAi, aiEnabled } = useCar();
     await resetRace();
+    if (aiEnabled.value) await disableAi();
     vi.clearAllMocks();
     capturedOnResult = null;
   });
@@ -189,6 +190,33 @@ describe("RaceControl.vue", () => {
       await flush();
 
       expect(wrapper.find(".leaderboard").exists()).toBe(true);
+    });
+  });
+
+  describe("race standings", () => {
+    it("renders the position badge and track map", () => {
+      const wrapper = mount(RaceControl);
+      const badge = wrapper.get(".position-badge");
+      expect(badge.text()).toContain("Position");
+      expect(badge.text()).toContain("P1");
+      expect(wrapper.find(".track-svg").exists()).toBe(true);
+      // Only the player marker shows when no rival is enabled.
+      expect(wrapper.find(".track-marker.player").exists()).toBe(true);
+      expect(wrapper.find(".track-marker.rival").exists()).toBe(false);
+    });
+
+    it("announces position via the manual Position button", async () => {
+      const wrapper = mount(RaceControl);
+
+      const posButton = wrapper
+        .findAll(".ctrl-button")
+        .find((b) => b.text() === "Position");
+      expect(posButton).toBeTruthy();
+      await posButton.trigger("click");
+      await flush();
+
+      // Solo run: status message reflects the spoken position callout.
+      expect(wrapper.get(".status-text").text()).toMatch(/solo/i);
     });
   });
 });

@@ -75,6 +75,17 @@ describe("matchCommand", () => {
     expect(matchCommand("temp status")).toBe("tempStatus");
   });
 
+  it("matches race position queries without shadowing lap status", () => {
+    expect(matchCommand("my position")).toBe("position");
+    expect(matchCommand("position")).toBe("position");
+    expect(matchCommand("where am i")).toBe("position");
+    expect(matchCommand("posisi saya", "id")).toBe("position");
+    expect(matchCommand("peringkat saya", "id")).toBe("position");
+    // The bare "lap" queries must still resolve to lapStatus.
+    expect(matchCommand("lap status")).toBe("lapStatus");
+    expect(matchCommand("what lap")).toBe("lapStatus");
+  });
+
   it("does not misfire on single stray letters", () => {
     // Previously 't' matched tire and 'dr' matched DRS.
     expect(matchCommand("t")).toBeNull();

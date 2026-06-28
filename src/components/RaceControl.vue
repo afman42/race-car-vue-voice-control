@@ -46,6 +46,41 @@
       }}</span>
     </div>
 
+    <div class="position-badge" role="status" aria-live="polite">
+      <span class="pos-label">{{ t("ui.position") }}</span>
+      <span class="pos-value">{{ positionLabel }}</span>
+      <span class="pos-gap">{{ gapText }}</span>
+    </div>
+
+    <div class="track-map">
+      <h3 class="visually-hidden">{{ t("ui.trackMap") }}</h3>
+      <svg
+        class="track-svg"
+        viewBox="0 0 100 60"
+        role="img"
+        :aria-label="trackAriaLabel"
+      >
+        <path
+          class="track-path"
+          ref="trackPath"
+          d="M 20 10 H 80 A 20 20 0 0 1 80 50 H 20 A 20 20 0 0 1 20 10 Z"
+        ></path>
+        <circle
+          class="track-marker player"
+          :cx="playerMarker.x"
+          :cy="playerMarker.y"
+          r="4"
+        ></circle>
+        <circle
+          v-if="aiEnabled"
+          class="track-marker rival"
+          :cx="rivalMarker.x"
+          :cy="rivalMarker.y"
+          r="4"
+        ></circle>
+      </svg>
+    </div>
+
     <div class="gauge-container">
       <svg
         class="rpm-gauge"
@@ -244,6 +279,7 @@ import speechService from "@/services/speechRecognitionService";
 import ttsService from "@/services/textToSpeechService";
 import { useI18n } from "@/i18n";
 import { CAR_SETTINGS } from "@/config";
+import { formatPosition } from "@/utils/raceStanding";
 
 // --- 1. Get All Car Logic & State from the Composable ---
 const {
@@ -276,6 +312,9 @@ const {
   aiBestLapTime,
   aiLeaderboard,
   aiFinished,
+  standings,
+  playerLoopPos,
+  rivalLoopPos,
   startEngine,
   stopEngine,
   activateDrs,
@@ -297,6 +336,7 @@ const {
   getDamageStatus,
   getWeatherStatus,
   getHelp,
+  getPosition,
   performPitStop,
   resetRace,
   formatLapTime,
@@ -340,12 +380,22 @@ let overtakeCountdownInterval = null;
 const gaugeNeedlePath = ref(null);
 const gaugeCircumference = ref(0);
 
+// Track map: measured path length lets us place markers via getPointAtLength.
+const trackPath = ref(null);
+const trackLength = ref(0);
+
 onMounted(() => {
   if (
     gaugeNeedlePath.value &&
     typeof gaugeNeedlePath.value.getTotalLength === "function"
   ) {
     gaugeCircumference.value = gaugeNeedlePath.value.getTotalLength();
+  }
+  if (
+    trackPath.value &&
+    typeof trackPath.value.getTotalLength === "function"
+  ) {
+    trackLength.value = trackPath.value.getTotalLength();
   }
 });
 
@@ -354,6 +404,38 @@ const rpmNeedleOffset = computed(() => {
   const rpmPercentage = rpm.value / CAR_SETTINGS.RPM_MAX;
   return gaugeCircumference.value * (1 - rpmPercentage);
 });
+
+// Resolve a 0..1 loop fraction to an {x, y} point on the track path. Falls back
+// to a fixed point when SVG geometry is unavailable (e.g. jsdom under tests).
+const pointAt = (fraction) => {
+  const path = trackPath.value;
+  if (
+    !path ||
+    trackLength.value === 0 ||
+    typeof path.getPointAtLength !== "function"
+  ) {
+    return { x: 50, y: 10 };
+  }
+  const pt = path.getPointAtLength(fraction * trackLength.value);
+  return { x: pt.x, y: pt.y };
+};
+
+const playerMarker = computed(() => pointAt(playerLoopPos.value));
+const rivalMarker = computed(() => pointAt(rivalLoopPos.value));
+
+// Position badge text derived from the shared standings computed.
+const positionLabel = computed(() =>
+  formatPosition(standings.value.playerPosition),
+);
+const gapText = computed(() => {
+  const s = standings.value;
+  if (s.leader === null) return t("ui.solo");
+  const laps = Math.abs(s.gap).toFixed(1);
+  return t(s.leader === "player" ? "msg.gapAhead" : "msg.gapBehind", { laps });
+});
+const trackAriaLabel = computed(() =>
+  `${t("ui.trackMap")}: ${positionLabel.value}, ${gapText.value}`,
+);
 
 // --- 4. Command Dispatch ---
 
@@ -378,6 +460,7 @@ const commandActions = {
   activateDrs,
   lapStatus: getLapStatus,
   bestLap: getBestLap,
+  position: getPosition,
   tempStatus: getTempStatus,
   tireStatus: checkTireStatus,
   fuelStatus: getFuelStatus,
@@ -414,6 +497,7 @@ const manualControls = [
   { labelKey: "btn.tireMedium", command: "tireMedium" },
   { labelKey: "btn.tireHard", command: "tireHard" },
   { labelKey: "btn.lapStatus", command: "lapStatus" },
+  { labelKey: "btn.position", command: "position" },
   { labelKey: "btn.tempStatus", command: "tempStatus" },
   { labelKey: "btn.bestLap", command: "bestLap" },
   { labelKey: "btn.damageStatus", command: "damageStatus" },
@@ -698,6 +782,56 @@ h1 {
   color: #00ffff;
   letter-spacing: 1px;
   margin-bottom: 1.5rem;
+}
+
+.position-badge {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.position-badge .pos-label {
+  color: #aaa;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+.position-badge .pos-value {
+  color: #00ffff;
+  font-size: 1.6rem;
+  font-weight: bold;
+}
+.position-badge .pos-gap {
+  color: #ffdc00;
+  font-size: 0.9rem;
+  font-family: monospace;
+}
+
+.track-map {
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: center;
+}
+.track-svg {
+  width: 70%;
+  max-width: 280px;
+}
+.track-path {
+  fill: none;
+  stroke: #333;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.track-marker {
+  transition:
+    cx 0.4s linear,
+    cy 0.4s linear;
+}
+.track-marker.player {
+  fill: #00ffff;
+}
+.track-marker.rival {
+  fill: #ff851b;
 }
 
 .manual-controls {

@@ -12,6 +12,12 @@ import audioService from "@/services/audioService";
 import ttsService from "@/services/textToSpeechService";
 import { t } from "@/i18n";
 import { formatLapTime } from "@/utils/formatLapTime";
+import {
+  totalProgress,
+  loopPosition,
+  computeStandings,
+  formatPosition,
+} from "@/utils/raceStanding";
 import { useAiRival } from "@/composables/useAiRival";
 
 // Maps a canonical status label to its i18n key for spoken output.
@@ -120,6 +126,34 @@ export function useCar() {
       (carDamage.value / 100) * CAR_SETTINGS.DAMAGE_MAX_PACE_PENALTY;
     return Math.max(0, 1 - penalty);
   });
+
+  // --- RACE STANDINGS ---
+  // Both cars are reduced to a single "progress in laps" value so they can be
+  // ranked and placed on the track map, even though the player (physics sim)
+  // and the rival (lap-time generator) measure intra-lap progress differently.
+  const playerProgress = computed(() =>
+    totalProgress(
+      currentLap.value,
+      lapProgress.value / CAR_SETTINGS.LAP_DISTANCE,
+      CAR_SETTINGS.TOTAL_LAPS,
+    ),
+  );
+
+  const rivalProgress = computed(() =>
+    totalProgress(ai.currentLap.value, ai.lapProgress.value, CAR_SETTINGS.TOTAL_LAPS),
+  );
+
+  // Position + gap relative to the rival. No rival => solo P1 (null-safe helper).
+  const standings = computed(() =>
+    computeStandings(
+      { progress: playerProgress.value },
+      ai.enabled.value ? { progress: rivalProgress.value } : null,
+    ),
+  );
+
+  // Normalized loop position (0..1) for placing each marker on the circuit.
+  const playerLoopPos = computed(() => loopPosition(playerProgress.value));
+  const rivalLoopPos = computed(() => loopPosition(rivalProgress.value));
 
   // --- PRIVATE METHODS (LOGIC) ---
   const normalizedRpmRatio = () => {
@@ -533,6 +567,21 @@ export function useCar() {
 
   const getHelp = () => speakAndReturn("msg.help");
 
+  // Announce the player's current race position and the gap to the rival.
+  const getPosition = () => {
+    const s = standings.value;
+    if (s.leader === null) return speakAndReturn("msg.positionSolo");
+    const gapLaps = Math.abs(s.gap).toFixed(1);
+    const gap = t(
+      s.leader === "player" ? "msg.gapAhead" : "msg.gapBehind",
+      { laps: gapLaps },
+    );
+    return speakAndReturn("msg.position", {
+      pos: formatPosition(s.playerPosition),
+      gap,
+    });
+  };
+
   const getBestLap = () => {
     if (bestLapTime.value === null) return speakAndReturn("msg.noLapYet");
     return speakAndReturn("msg.bestLap", {
@@ -697,6 +746,9 @@ export function useCar() {
     isLowFuel,
     damageStatus,
     paceFactor,
+    standings,
+    playerLoopPos,
+    rivalLoopPos,
     aiConfig: ai.config,
     // Actions
     startEngine,
@@ -720,6 +772,7 @@ export function useCar() {
     getDamageStatus,
     getWeatherStatus,
     getHelp,
+    getPosition,
     performPitStop,
     resetRace,
     // Helpers

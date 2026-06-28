@@ -167,6 +167,15 @@ export const COMMAND_MATCHERS = [
     command: "activateDrs",
     keywords: { en: ["drs"], id: ["drs"] },
   },
+  // Race position query before the generic "lap" status (so "lap" can't shadow
+  // multi-word position phrases that happen to share tokens).
+  {
+    command: "position",
+    keywords: {
+      en: ["my position", "position", "standing", "where am i"],
+      id: ["posisi saya", "posisi", "peringkat saya"],
+    },
+  },
   // Best lap / leaderboard query before the generic "lap" status.
   {
     command: "bestLap",

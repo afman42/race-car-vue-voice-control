@@ -1,193 +1,78 @@
-# Race Car Voice Control
+# 🏎️ Race Car Voice Control
 
-A Vue.js application that allows you to control a virtual race car using voice commands. Experience the thrill of Formula 1 racing through voice-controlled commands in your browser — now with **bilingual support** (English & Indonesian).
+> **Control a virtual Formula 1 car with your voice — right in the browser.**
+
+A Vue 3 single-page application that combines **speech recognition**, **real-time physics simulation**, and an interactive racing dashboard. Speak commands to start the engine, shift fuel strategies, deploy DRS, battle an AI rival, and more. Supports **English** and **Bahasa Indonesia**.
+
+---
+
+## Quick Start
+
+```bash
+pnpm install
+pnpm dev        # Start dev server (https)
+pnpm test:run   # Run all 159 tests
+```
+
+> **Requirements:** Chrome browser. Microphone access. HTTPS (auto-configured with a self-signed cert).
+
+---
 
 ## Features
 
-- **Voice Control**: Control various car functions with simple voice commands
-- **Fuzzy Voice Matching**: Tolerates minor speech-recognition slips (e.g. "start engin" still starts the engine) via a two-pass exact-then-fuzzy matcher
-- **Manual Controls**: A full set of on-screen buttons so the app works without a microphone
-- **Real-time Dashboard**: Monitor engine, RPM, DRS, overtake, tires, fuel, battery, fuel mix, ERS mode, engine temperature, weather, damage, best lap, and the AI rival
-- **Race Progress**: Lap counter that advances as you drive, finishing after the final lap
-- **Lap Timing & Leaderboard**: Each completed lap is timed and ranked on a fastest-laps board, with your best lap tracked
-- **AI Rival**: Race a computer opponent at Easy, Medium, Hard, or Random difficulty; its lap times appear on a separate rival board
-- **Weather Conditions**: Dry, Cloudy, Wet, or Storm change grip (pace), tire wear, and engine cooling
-- **Car Damage**: Damage accrues from overheating and running ruined tires, sapping pace until repaired in the pits
-- **Interactive Simulation**: Realistic car behavior with fuel consumption based on RPM and fuel mix
-- **Fuel Mix Strategy**: Switch between Lean, Standard, and Rich mixes to trade pace for fuel economy
-- **Tire Compounds**: Fit Soft, Medium, or Hard tires (in the pits) to trade grip for durability
-- **Tire Wear**: Tires degrade over time (faster at high RPM, on softer compounds, and in wet weather)
-- **ERS Deployment Modes**: Hotlap, Balanced, or Charge change how aggressively the battery harvests
-- **Engine Temperature**: Heat builds at high RPM and during overtakes; overheating cuts power and inflicts damage
-- **Engine Stall**: Running out of fuel stalls the engine, just like the real thing
-- **Radio Warnings**: Automatic voice alerts for critical fuel, battery, engine temperature, and damage
-- **Overtake Countdown**: Visual bar showing the remaining overtake boost
-- **Audio Feedback**: Sound effects and voice responses for all actions
-- **Bilingual Support**: Full English and Indonesian localization — UI text, voice responses, and voice commands all switch with the selected language
-- **Language Persistence**: Your language choice is saved to localStorage
-- **Accessible UI**: ARIA roles and live regions for screen-reader support
-- **Graceful Audio Handling**: Sound effects that silently skip on load failure, keeping voice interactions smooth
-- **Automatic Cleanup**: Simulation interval properly cleaned up when the component unmounts
+- **🎤 Voice Control** — 50+ voice commands with fuzzy matching that tolerates recognition slips
+- **🕹️ Manual Controls** — Full on-screen button grid, no microphone needed
+- **🏁 10-Lap Races** — Each lap timed, fastest laps tracked on a leaderboard
+- **🤖 AI Rival** — Race a computer opponent at Easy / Medium / Hard / Random difficulty
+- **🌦️ Weather System** — Dry, Cloudy, Wet, or Storm affect grip, tire wear, and engine cooling
+- **🔧 Pit Stops** — Refuel, recharge, cool the engine, repair damage, fit fresh tires
+- **📊 Live Dashboard** — RPM gauge, track map, position badge, and real-time status displays
+- **🌐 Bilingual** — Full English and Indonesian localization (UI, voice responses, commands)
+- **⚠️ Radio Warnings** — Automatic voice alerts for critical fuel, battery, overheating, damage
 
-## Language Support
+---
 
-The app supports **English** (default) and **Bahasa Indonesia**. A language dropdown in the top-right corner lets you switch at any time.
+## Documentation
 
-When you switch languages:
-- All on-screen labels and buttons update immediately
-- Voice responses (TTS) switch to the selected language
-- Voice command keywords switch to the selected language
-- Speech recognition language changes to match
-
-## How to Use
-
-1. Click the "Open Radio Channel" / "Buka Saluran Radio" button to start listening (or use the Manual Controls)
-2. Speak clearly and wait for audio feedback
-3. Use any of the voice commands listed below
-4. Watch the dashboard update in real-time
-
-## Voice Commands
-
-### English
-
-| Category | Commands |
+| Document | Description |
 |---|---|
-| **Help** | "help", "what can I say", "commands" |
-| **Engine** | "start engine", "stop engine", "shut down" |
-| **DRS** | "drs" / "activate drs" to enable; "drs off", "close drs", "disable drs" to disable |
-| **Overtake** | "overtake", "over take" |
-| **Fuel Mix** | "lean mix", "rich mix", "standard mix" |
-| **ERS Mode** | "hotlap", "charge mode", "balanced mode" |
-| **Tire Compound** (in pits) | "soft tire", "medium tire", "hard tire" |
-| **Tires** | "tire status", "check tire", "tyre" |
-| **Fuel** | "fuel status", "tank status", "gas" |
-| **Battery** | "battery status", "battery" |
-| **Temperature** | "temperature", "engine temp", "temp status" |
-| **Lap** | "lap status", "what lap", "current lap" |
-| **Best Lap** | "best lap", "fastest lap", "lap record" |
-| **Weather** | "dry track", "cloudy weather", "wet track", "rain", "storm" |
-| **Weather Status** | "weather status", "conditions" |
-| **Damage** | "damage", "car damage" |
-| **AI Rival** | "rival easy", "rival medium", "rival hard", "random rival" / "surprise me", "rival off" |
-| **Rival Status** | "rival status", "ai status", "opponent" |
-| **Pit Stop** | "pit stop", "box box", "pit now" |
-| **Reset** | "reset", "new race", "restart" |
+| [`docs/SETUP.md`](docs/SETUP.md) | Requirements, installation, project scripts, troubleshooting |
+| [`docs/COMMANDS.md`](docs/COMMANDS.md) | All voice commands (English & Bahasa Indonesia) |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Project structure, design decisions, data flow |
+| [`docs/SIMULATION.md`](docs/SIMULATION.md) | Physics model, weather effects, AI difficulty, configuration |
+| [`docs/TESTING.md`](docs/TESTING.md) | Test suite breakdown, patterns, and how to run tests |
 
-### Bahasa Indonesia
-
-| Kategori | Perintah |
-|---|---|
-| **Bantuan** | "bantuan", "tolong", "perintah apa", "daftar perintah" |
-| **Mesin** | "nyalakan mesin", "hidupkan mesin", "start mesin", "matikan mesin", "stop mesin" |
-| **DRS** | "drs", "drs mati", "tutup drs", "matikan drs" |
-| **Salip** | "salip", "menyalip", "nyalip" |
-| **Campuran BBM** | "campuran irit", "mode irit", "campuran kaya", "mode kaya", "campuran standar", "mode standar" |
-| **Mode ERS** | "ers hotlap", "mode hotlap", "mode isi", "ers isi", "isi baterai", "mode seimbang", "ers seimbang" |
-| **Jenis Ban** (di pit) | "ban lunak", "ban sedang", "ban medium", "ban keras" |
-| **Ban** | "ban", "status ban" |
-| **Bahan Bakar** | "bahan bakar", "bensin", "tangki" |
-| **Baterai** | "baterai" |
-| **Suhu** | "suhu", "temperatur", "status suhu" |
-| **Lap** | "status lap", "lap berapa", "lap" |
-| **Lap Tercepat** | "lap tercepat", "rekor lap", "lap terbaik" |
-| **Cuaca** | "cuaca kering", "berawan", "lintasan basah", "hujan", "badai" |
-| **Status Cuaca** | "status cuaca", "kondisi" |
-| **Kerusakan** | "kerusakan", "kondisi mobil" |
-| **Lawan AI** | "lawan mudah", "lawan sedang", "lawan sulit", "lawan acak", "lawan mati" |
-| **Status Lawan** | "status lawan", "status ai" |
-| **Pit Stop** | "pit stop", "masuk pit", "ke pit" |
-| **Atur Ulang** | "atur ulang", "balapan baru", "mulai ulang", "reset" |
-
-## Technical Details
-
-- Fuel consumption scales with RPM and the selected fuel mix
-- Tires wear each tick while the engine runs, degrading Optimal → Used → Worn, scaled by compound
-- Battery recharge rate is scaled by the ERS deployment mode
-- Engine temperature rises with RPM and overtaking, cools toward ambient otherwise; crossing the critical threshold cuts power until the car is pitted
-- Laps advance as accumulated distance (driven by RPM) builds up; the race ends after the final lap
-- Each completed lap is timed; the fastest laps are ranked on a leaderboard and the best lap is tracked
-- Weather (Dry/Cloudy/Wet/Storm) scales grip (lap pace), tire wear, and engine cooling — wetter conditions are slower and chew tires harder
-- Car damage accrues while overheating or running destroyed tires, saps pace up to 40%, and is repaired only in the pits
-- An optional AI rival races alongside you as a lap-time generator; difficulty (Easy/Medium/Hard, or Random) sets its pace and consistency, and its laps post to a separate board
-- The engine stalls automatically when the fuel tank empties
-- Critical fuel, battery, and temperature warnings are announced once per threshold crossing
-- Engine must be running to activate DRS and overtake modes; tire compounds change only in the pits
-- A pit stop refuels, recharges, cools the engine, and fits fresh tires
-- All voice recognition happens in the browser using the Web Speech API
-- Command matching runs two passes: an exact-keyword pass, then a fuzzy (Levenshtein) pass that tolerates minor speech-recognition slips
-- All i18n messages live in `src/i18n.js` — easy to extend with new locales
-- `audioService.js` tracks load errors per sound — broken audio files are silently skipped instead of crashing playback
-- `useCar.js` auto-cleans the simulation interval on component unmount (no stale ticks)
-- Tunable values live in `src/config.js`
+---
 
 ## Project Structure
 
 ```
 src/
-├── config.js                          car simulation constants, fuel mixes, compounds, ERS modes
-├── i18n.js                            internationalization engine (English + Indonesian)
-├── main.js                            app bootstrap
-├── App.vue                            root component
+├── config.js              # Tunable constants (physics, AI, compounds)
+├── i18n.js                # i18n engine (English + Indonesian)
+├── main.js                # App bootstrap
+├── App.vue                # Root component
 ├── components/
-│   ├── RaceControl.vue                UI, dashboard, manual controls, command dispatch
-│   └── RaceControl.spec.js            component tests
+│   └── RaceControl.vue    # Main UI: dashboard, controls, command dispatch
 ├── composables/
-│   ├── useCar.js                      core car state and actions (singleton)
-│   ├── useAiRival.js                  AI rival lap-time generator (singleton)
-│   ├── commandRouter.js               maps transcripts to command keys (fuzzy, multi-language)
-│   ├── useCar.spec.js                 action/state tests
-│   ├── useCarSimulation.spec.js       simulation-tick tests (fuel, tire wear, stall)
-│   ├── useCarFeatures.spec.js         compound, ERS, temperature, lap, help tests
-│   ├── useCarRaceFeatures.spec.js     lap timing, leaderboard, weather, damage tests
-│   ├── useCarAiRival.spec.js          AI rival difficulty, lap generation, board tests
-│   └── commandRouter.spec.js          command-matching + fuzzy tests
+│   ├── useCar.js          # Core singleton: car state, simulation, actions
+│   ├── useAiRival.js      # AI rival singleton: lap-time generator
+│   └── commandRouter.js   # Voice transcript → command key (exact + fuzzy)
 ├── utils/
-│   ├── formatLapTime.js               shared lap-time formatter (M:SS.mmm)
-│   └── formatLapTime.spec.js          formatter unit tests
+│   ├── formatLapTime.js   # Lap time formatter (M:SS.mmm)
+│   └── raceStanding.js    # Progress, standings, position formatting
 └── services/
-    ├── audioService.js                preload + play sound effects
-    ├── speechRecognitionService.js    Web Speech recognition wrapper
-    └── textToSpeechService.js         speech synthesis wrapper
+    ├── audioService.js              # Sound effects (graceful on failure)
+    ├── speechRecognitionService.js  # Web Speech API (auto-restart)
+    └── textToSpeechService.js       # Speech synthesis (voice matching)
 ```
 
-## Requirements
+---
 
-- Chrome browser (recommended)
-- Microphone access enabled
-- Earphones recommended for best audio experience
-- No VPN or proxy recommended for optimal performance
+## Tech Stack
 
-## Setup
-
-```bash
-pnpm install
-pnpm dev
-```
-
-## Running Tests
-
-```bash
-pnpm test       # watch mode
-pnpm test:run   # single run
-```
-
-The test suite covers **129 tests** across 8 files:
-
-| Test File | Tests | Coverage |
-|---|---|---|
-| `useCar.spec.js` | 18 | Engine, DRS, overtake, fuel mix, tire status, pit stop — including edge cases (engine-off overtake) |
-| `useCarFeatures.spec.js` | 16 | Tire compounds, ERS modes, engine temperature, lap timer, help, reset |
-| `useCarSimulation.spec.js` | 9 | Fuel consumption, battery recharge, tire wear, warnings, stall — including battery cap and post-race behavior |
-| `useCarRaceFeatures.spec.js` | 22 | Lap timing, fastest-lap leaderboard, weather grip/wear, damage accrual and pace penalty |
-| `useCarAiRival.spec.js` | 15 | AI rival difficulty, lap generation, board capping/sorting, status query, reset |
-| `commandRouter.spec.js` | 32 | Voice command keywords, no false matches, locale matching, fuzzy (Levenshtein) matching |
-| `RaceControl.spec.js` | 13 | Dashboard render, radio toggle, voice/manual commands, AI controls, unmount cleanup |
-| `formatLapTime.spec.js` | 4 | Lap-time formatting (M:SS.mmm), placeholder, rounding, sub-minute padding |
-
-
-## Notes
-
-- Clear browser cache if experiencing issues
-- For best results, use in a quiet environment
-- Some commands require the engine to be running first
-- Language preference is saved across sessions via localStorage
+- **Vue 3** with Composition API + `<script setup>`
+- **Vite 7** with Vue plugin + basic SSL
+- **Vitest** + **jsdom** + **@vue/test-utils** for testing
+- **Web Speech API** (speech recognition + synthesis)
+- **pnpm** as package manager
