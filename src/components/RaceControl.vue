@@ -672,8 +672,12 @@ const runCommand = async (command) => {
     startOvertakeCountdown();
   }
   // Track the last AI difficulty command so the active button stays highlighted.
-  if (command.startsWith("ai") && command !== "aiStatus") {
+  if (command.startsWith("ai") && command !== "aiStatus" && command !== "aiOff") {
     activeAiCommand.value = command;
+    // Auto-start the engine so the race begins immediately with the AI rival.
+    if (!engineStatus.value) {
+      startEngine().catch(() => {});
+    }
   }
   statusMessage.value = message;
   return message;
