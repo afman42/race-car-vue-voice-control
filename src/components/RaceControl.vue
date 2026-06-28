@@ -227,6 +227,14 @@
         <p class="status info">{{ ersMode }}</p>
       </div>
       <div class="display-item">
+        <h2>{{ t("ui.speed") }}</h2>
+        <p class="status on">{{ speedKmh }} <span class="unit-label">km/h</span></p>
+      </div>
+      <div class="display-item">
+        <h2>{{ t("ui.currentLapTime") }}</h2>
+        <p class="status info lap-time">{{ formatLapTime(currentLapTime) }}</p>
+      </div>
+      <div class="display-item">
         <h2>{{ t("ui.engineTemp") }}</h2>
         <p
           :class="[
@@ -369,6 +377,7 @@ const {
   isLowFuel,
   bestLapTime,
   lastLapTime,
+  currentLapTime,
   leaderboard,
   weather,
   carDamage,
@@ -383,6 +392,7 @@ const {
   playerLoopPos,
   rivalLoopPos,
   currentSegmentIndex,
+  speedKmh,
   startEngine,
   stopEngine,
   activateDrs,
@@ -897,6 +907,16 @@ h1 {
   background-color: #00ffff;
   border-radius: 3px;
   transition: width 0.1s linear;
+}
+
+.unit-label {
+  font-size: 0.6rem;
+  color: #888;
+  font-weight: normal;
+  vertical-align: super;
+}
+.lap-time {
+  font-family: monospace;
 }
 
 .lap-banner {

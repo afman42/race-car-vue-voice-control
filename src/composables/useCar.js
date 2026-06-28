@@ -144,6 +144,19 @@ export function useCar() {
     const penalty =
       (carDamage.value / 100) * CAR_SETTINGS.DAMAGE_MAX_PACE_PENALTY;
     return Math.max(0, 1 - penalty);
+  });    // --- DERIVED SPEED ---
+  // Compute a conceptual speed in km/h from RPM, gear ratio, and cornering.
+  // Pure fun — not a physics model, but gives the driver a sense of pace.
+  const speedKmh = computed(() => {
+    const ratio = normalizedRpmRatio();
+    const gr = currentGear.value > 0
+      ? (CAR_SETTINGS.GEAR_RATIOS[currentGear.value] || 0.5)
+      : 0;
+    const seg = findSegmentAtProgress(lapProgress.value);
+    const cf = seg.segment.type === "corner" ? CAR_SETTINGS.CORNER_SPEED_CAP : 1.0;
+    const base = 50 + ratio * gr * 200;
+    const raw = base * cf * (weatherConfig().gripFactor || 1.0) * paceFactor.value;
+    return Math.round(raw);
   });
 
   // --- RACE STANDINGS ---
@@ -279,8 +292,10 @@ export function useCar() {
 
     // Distance accrues with RPM × gear ratio: the same RPM in a higher gear
     // produces more speed. Wet weather (grip) and damage (pace) modulate.
-    const gearRatio =
-      CAR_SETTINGS.GEAR_RATIOS[currentGear.value] || 0.5;
+    // In neutral (gear 0) the car barely creeps — no gear ratio to accelerate.
+    const gearRatio = currentGear.value > 0
+      ? (CAR_SETTINGS.GEAR_RATIOS[currentGear.value] || 0.5)
+      : 0;
     const rawSpeed =
       CAR_SETTINGS.LAP_DISTANCE *
       0.1 *
@@ -893,6 +908,7 @@ export function useCar() {
     isLowFuel,
     damageStatus,
     paceFactor,
+    speedKmh,
     standings,
     playerLoopPos,
     rivalLoopPos,

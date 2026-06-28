@@ -7,13 +7,15 @@ export const CAR_SETTINGS = {
   OVERTAKE_DURATION_MS: 8000,
   OVERTAKE_BATTERY_COST: 20,
   PIT_STOP_DURATION_MS: 4000,
-  SIMULATION_TICK_MS: 5000,
+  // Simulation tick rate. Lower = smoother, more responsive updates.
+  // All per-tick rates below are scaled for this interval.
+  SIMULATION_TICK_MS: 2000,
   FUEL_CONSUMPTION_RATE: {
-    LEAN: 0.2,
-    STANDARD: 0.5,
-    RICH: 1.2,
+    LEAN: 0.08,
+    STANDARD: 0.2,
+    RICH: 0.48,
   },
-  BATTERY_RECHARGE_RATE: 0.2,
+  BATTERY_RECHARGE_RATE: 0.08,
 
   // RPM-based fuel multiplier: ranges linearly from MIN (idle) to MAX (max RPM).
   RPM_MULTIPLIER_MIN: 0.3,
@@ -26,7 +28,7 @@ export const CAR_SETTINGS = {
 
   // Tire wear: tires lose this much "life" (percent) per simulation tick
   // while the engine runs, more at higher RPM. Life maps to a status label.
-  TIRE_WEAR_RATE: 1.5,
+  TIRE_WEAR_RATE: 0.6,
   TIRE_OPTIMAL_THRESHOLD: 70,
   TIRE_WORN_THRESHOLD: 30,
 
@@ -40,13 +42,14 @@ export const CAR_SETTINGS = {
   TEMP_AMBIENT: 90,
   TEMP_OPTIMAL_MAX: 110,
   TEMP_CRITICAL: 130,
-  TEMP_RISE_RATE: 12, // max degrees gained per tick at full RPM
-  TEMP_COOL_RATE: 8, // degrees shed per tick toward ambient
-  TEMP_OVERTAKE_PENALTY: 10, // extra degrees per tick while overtaking
+  TEMP_RISE_RATE: 4,   // max degrees gained per tick at full RPM (was 12)
+  TEMP_COOL_RATE: 3,   // degrees shed per tick toward ambient (was 8)
+  TEMP_OVERTAKE_PENALTY: 4, // extra degrees per tick while overtaking (was 10)
 
   // Lap timing: simulated milliseconds added to the current lap each tick.
   // Faster laps (higher RPM) finish in fewer ticks, so they post lower times.
-  LAP_TIME_PER_TICK_MS: 1000,
+  // Lap timing: simulated milliseconds added to the current lap each tick.
+  LAP_TIME_PER_TICK_MS: 400,
   LEADERBOARD_SIZE: 5, // how many fastest laps to keep on the board
 
   // Damage (0..100). Accrues from overheating and running ruined tires, and
@@ -72,8 +75,8 @@ export const CAR_SETTINGS = {
   GEAR_RATIOS: [0, 0.45, 0.60, 0.78, 0.95, 1.15, 1.35, 1.55],
   GEAR_SHIFT_RPM: 7500, // RPM threshold that triggers an upshift
   GEAR_DROP_RPM: 5000, // RPM drops to this after an upshift
-  GEAR_RPM_CLIMB: 1500, // RPM gained per simulation tick while in gear
-  GEAR_START_RPM: 4000, // RPM when the engine starts (car is "ready to race")
+  GEAR_RPM_CLIMB: 1000, // RPM gained per tick while in gear (was 1500 at 5s tick)
+  GEAR_START_RPM: 4000, // RPM when the engine starts (car is ready to race)
 
   // Track layout: segments that make up each lap, defining where the car
   // upshifts (straights) and downshifts (corners). Lengths must sum to
