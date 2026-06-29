@@ -261,14 +261,8 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted } from "vue";
-import { useCar, findSegmentAtProgress } from "@/composables/useCar";
-import { matchCommand } from "@/composables/commandRouter";
-import speechService from "@/services/speechRecognitionService";
-import ttsService from "@/services/textToSpeechService";
-import { useI18n } from "@/i18n";
 import { CAR_SETTINGS } from "@/config";
-import { formatPosition } from "@/utils/raceStanding";
+import { useRaceControl } from "@/composables/useRaceControl";
 import TrackMap from "./TrackMap.vue";
 import RpmGauge from "./RpmGauge.vue";
 import Leaderboard from "./Leaderboard.vue";
@@ -308,291 +302,32 @@ const {
   aiCurrentLap,
   aiBestLapTime,
   aiLeaderboard,
-  standings,
   playerLoopPos,
   rivalLoopPos,
   speedKmh,
-  startEngine,
-  stopEngine,
-  activateDrs,
-  deactivateDrs,
-  activateOvertake,
-  setFuelMix,
-  setErsMode,
-  setTireCompound,
-  setWeather,
-  setAiDifficulty,
-  disableAi,
-  getAiStatus,
-  checkTireStatus,
-  getFuelStatus,
-  getBatteryStatus,
-  getTempStatus,
-  getLapStatus,
-  getBestLap,
-  getDamageStatus,
-  getWeatherStatus,
-  getHelp,
-  getPosition,
-  performPitStop,
-  resetRace,
-  selectCar,
   selectedCar,
   formatLapTime,
-} = useCar();
-
-const { t, locale, speechLang, setLocale, SUPPORTED_LOCALES } = useI18n();
-
-watch(
-  speechLang,
-  (lang) => {
-    speechService.setLanguage(lang);
-    ttsService.setLanguage(lang);
-  },
-  { immediate: true },
-);
-
-const onLocaleChange = (event) => {
-  setLocale(event.target.value);
-};
-
-const isListening = ref(false);
-const statusMessage = ref(t("ui.openRadio"));
-const lastTranscript = ref("...");
-const showCarModal = ref(false);
-
-const onCarSelect = async (carId) => {
-  const message = await selectCar(carId);
-  statusMessage.value = message;
-  showCarModal.value = false;
-};
-
-watch(locale, () => {
-  if (!isListening.value) {
-    statusMessage.value = t("ui.openRadio");
-  }
-});
-
-const overtakeRemaining = ref(0);
-let overtakeCountdownInterval = null;
-
-const activeAiCommand = ref(null);
-
-const gearFlash = ref(false);
-let gearFlashTimeout = null;
-
-watch(currentGear, () => {
-  if (currentGear.value > 0) {
-    gearFlash.value = true;
-    if (gearFlashTimeout) clearTimeout(gearFlashTimeout);
-    gearFlashTimeout = setTimeout(() => {
-      gearFlash.value = false;
-    }, 300);
-  }
-});
-
-const currentSegmentInfo = computed(() => findSegmentAtProgress(lapProgress.value));
-const currentSegmentType = computed(() => currentSegmentInfo.value.segment.type);
-const currentSegmentSpeed = computed(() => currentSegmentInfo.value.segment.speed || null);
-const currentSegmentLabel = computed(() => {
-  if (currentSegmentType.value === "straight") return t("ui.segStraight");
-  if (currentSegmentSpeed.value === "slow") return t("ui.segCornerSlow");
-  if (currentSegmentSpeed.value === "medium") return t("ui.segCornerMedium");
-  if (currentSegmentSpeed.value === "fast") return t("ui.segCornerFast");
-  return t("ui.segStraight");
-});
-
-const positionLabel = computed(() =>
-  formatPosition(standings.value.playerPosition),
-);
-const gapText = computed(() => {
-  const s = standings.value;
-  if (s.leader === null) return t("ui.solo");
-  const laps = Math.abs(s.gap).toFixed(1);
-  return t(s.leader === "player" ? "msg.gapAhead" : "msg.gapBehind", { laps });
-});
-const trackAriaLabel = computed(() =>
-  `${t("ui.trackMap")}: ${positionLabel.value}, ${gapText.value}`,
-);
-
-const commandActions = {
-  help: getHelp,
-  pitStop: performPitStop,
-  reset: resetRace,
-  startEngine,
-  stopEngine,
-  tireSoft: () => setTireCompound("SOFT"),
-  tireMedium: () => setTireCompound("MEDIUM"),
-  tireHard: () => setTireCompound("HARD"),
-  fuelMixLean: () => setFuelMix("LEAN"),
-  fuelMixRich: () => setFuelMix("RICH"),
-  fuelMixStandard: () => setFuelMix("STANDARD"),
-  ersHotlap: () => setErsMode("HOTLAP"),
-  ersCharge: () => setErsMode("CHARGE"),
-  ersBalanced: () => setErsMode("BALANCED"),
-  overtake: activateOvertake,
-  deactivateDrs,
-  activateDrs,
-  lapStatus: getLapStatus,
-  bestLap: getBestLap,
-  position: getPosition,
-  tempStatus: getTempStatus,
-  tireStatus: checkTireStatus,
-  fuelStatus: getFuelStatus,
-  batteryStatus: getBatteryStatus,
-  damageStatus: getDamageStatus,
-  weatherStatus: getWeatherStatus,
-  weatherDry: () => setWeather("DRY"),
-  weatherCloudy: () => setWeather("CLOUDY"),
-  weatherWet: () => setWeather("WET"),
-  weatherStorm: () => setWeather("STORM"),
-  aiEasy: () => setAiDifficulty("EASY"),
-  aiMedium: () => setAiDifficulty("MEDIUM"),
-  aiHard: () => setAiDifficulty("HARD"),
-  aiRandom: () => setAiDifficulty("RANDOM"),
-  aiOff: disableAi,
-  aiStatus: getAiStatus,
-  carSpeedster: () => selectCar("speedster"),
-  carBalanced: () => selectCar("balanced"),
-  carGripmaster: () => selectCar("gripmaster"),
-  carEndurance: () => selectCar("endurance"),
-};
-
-const runCommand = async (command) => {
-  if (!command || !commandActions[command]) {
-    return t("msg.notRecognized", { transcript: "" });
-  }
-  let message;
-  try {
-    message = await commandActions[command]();
-  } catch (err) {
-    console.warn("Command action failed:", command, err);
-    message = t("msg.notRecognized", { transcript: "" });
-  }
-  if (command === "overtake" && overtakeActive.value) {
-    startOvertakeCountdown();
-  }
-  if (command.startsWith("ai") && command !== "aiStatus" && command !== "aiOff") {
-    activeAiCommand.value = command;
-  }
-  if (command === "reset") {
-    activeAiCommand.value = null;
-  }
-  statusMessage.value = message;
-  return message;
-};
-
-const startOvertakeCountdown = () => {
-  if (overtakeCountdownInterval) clearInterval(overtakeCountdownInterval);
-  const start = Date.now();
-  overtakeRemaining.value = 100;
-  overtakeCountdownInterval = setInterval(() => {
-    // Stop the countdown if overtake ended early (stall/overheat/finish).
-    if (!overtakeActive.value) {
-      clearInterval(overtakeCountdownInterval);
-      overtakeCountdownInterval = null;
-      return;
-    }
-    const elapsed = Date.now() - start;
-    const remaining = Math.max(
-      0,
-      100 - (elapsed / CAR_SETTINGS.OVERTAKE_DURATION_MS) * 100,
-    );
-    overtakeRemaining.value = remaining;
-    if (remaining <= 0) {
-      clearInterval(overtakeCountdownInterval);
-      overtakeCountdownInterval = null;
-    }
-  }, 100);
-};
-
-const processCommand = async (transcript) => {
-  lastTranscript.value = transcript;
-
-  // Pause recognition — keep isManuallyStopped=true during processing so the
-  // async onend handler doesn't fire its own restart. We'll clear it below
-  // right before our deliberate restart.
-  speechService.stopListening();
-  isListening.value = false;
-
-  const command = matchCommand(transcript, locale.value);
-
-  if (command && commandActions[command]) {
-    await runCommand(command);
-  } else {
-    statusMessage.value = t("msg.notRecognized", { transcript });
-  }
-
-  setTimeout(() => {
-    // Clear the manual-stop flag so toggleListening can restart cleanly.
-    speechService.resetManualStop();
-    toggleListening(true);
-  }, 500);
-};
-
-const toggleListening = (forceStart = false) => {
-  if (isListening.value && !forceStart) {
-    speechService.stopListening();
-    isListening.value = false;
-    statusMessage.value = t("ui.radioClosed");
-  } else {
-    const started = speechService.startListening(processCommand, handleError, {
-      lang: speechLang.value,
-    });
-    if (started) {
-      isListening.value = true;
-      statusMessage.value = t("ui.radioOpen");
-    } else {
-      isListening.value = false;
-    }
-  }
-};
-
-const handleError = (error) => {
-  const errorCode =
-    typeof error === "string"
-      ? error
-      : error?.error || error?.message || "unknown";
-  let errorMessage = t("err.unknown");
-  switch (errorCode) {
-    case "not-allowed":
-    case "service-not-allowed":
-      errorMessage = t("err.micDenied");
-      break;
-    case "audio-capture":
-      errorMessage = t("err.audioCapture");
-      break;
-    case "not-supported":
-      errorMessage = t("err.notSupported");
-      break;
-    case "no-speech":
-      errorMessage = t("err.noSpeech");
-      break;
-    case "network":
-      errorMessage = t("err.network");
-      break;
-  }
-  statusMessage.value = errorMessage;
-  isListening.value = false;
-};
-
-onUnmounted(() => {
-  speechService.stopListening();
-  if (overtakeCountdownInterval) clearInterval(overtakeCountdownInterval);
-  if (gearFlashTimeout) clearTimeout(gearFlashTimeout);
-});
-
-if (import.meta.env.DEV) {
-  window.__simulateRaceEnd = () => {
-    raceFinished.value = true;
-    lapProgress.value = 0;
-    engineStatus.value = false;
-    rpm.value = 0;
-    currentGear.value = 0;
-    drsStatus.value = false;
-    overtakeActive.value = false;
-  };
-}
+  t,
+  locale,
+  SUPPORTED_LOCALES,
+  onLocaleChange,
+  isListening,
+  statusMessage,
+  lastTranscript,
+  showCarModal,
+  onCarSelect,
+  overtakeRemaining,
+  activeAiCommand,
+  gearFlash,
+  currentSegmentType,
+  currentSegmentSpeed,
+  currentSegmentLabel,
+  positionLabel,
+  gapText,
+  trackAriaLabel,
+  runCommand,
+  toggleListening,
+} = useRaceControl();
 </script>
 
 <style scoped>
