@@ -55,7 +55,8 @@
     />
 
     <div class="lap-banner" role="status" aria-live="polite">
-      <span v-if="raceFinished">{{ t("ui.raceComplete") }}</span>
+      <span v-if="pitting">{{ t("ui.pitting") }}</span>
+      <span v-else-if="raceFinished">{{ t("ui.raceComplete") }}</span>
       <span v-else>{{
         t("ui.lap", { lap: currentLap, total: CAR_SETTINGS.TOTAL_LAPS })
       }}</span>
@@ -214,6 +215,10 @@
         <p class="status info">{{ selectedCar.label }}</p>
       </div>
       <div class="display-item">
+        <h2>{{ t("ui.lastLap") }}</h2>
+        <p class="status info">{{ formatLapTime(lastLapTime) }}</p>
+      </div>
+      <div class="display-item">
         <h2>{{ t("ui.bestLap") }}</h2>
         <p class="status info">{{ formatLapTime(bestLapTime) }}</p>
       </div>
@@ -288,9 +293,11 @@ const {
   currentLap,
   lapProgress,
   raceFinished,
+  pitting,
   isLowBattery,
   isLowFuel,
   bestLapTime,
+  lastLapTime,
   currentLapTime,
   leaderboard,
   weather,
@@ -467,9 +474,9 @@ const runCommand = async (command) => {
   }
   if (command.startsWith("ai") && command !== "aiStatus" && command !== "aiOff") {
     activeAiCommand.value = command;
-    if (!engineStatus.value) {
-      startEngine().catch(() => {});
-    }
+  }
+  if (command === "reset") {
+    activeAiCommand.value = null;
   }
   statusMessage.value = message;
   return message;
@@ -480,6 +487,12 @@ const startOvertakeCountdown = () => {
   const start = Date.now();
   overtakeRemaining.value = 100;
   overtakeCountdownInterval = setInterval(() => {
+    // Stop the countdown if overtake ended early (stall/overheat/finish).
+    if (!overtakeActive.value) {
+      clearInterval(overtakeCountdownInterval);
+      overtakeCountdownInterval = null;
+      return;
+    }
     const elapsed = Date.now() - start;
     const remaining = Math.max(
       0,
@@ -496,10 +509,10 @@ const startOvertakeCountdown = () => {
 const processCommand = async (transcript) => {
   lastTranscript.value = transcript;
 
-  // Pause recognition while processing — reset the manual-stop flag so
-  // auto-restart can resume after the command completes.
+  // Pause recognition — keep isManuallyStopped=true during processing so the
+  // async onend handler doesn't fire its own restart. We'll clear it below
+  // right before our deliberate restart.
   speechService.stopListening();
-  speechService.resetManualStop();
   isListening.value = false;
 
   const command = matchCommand(transcript, locale.value);
@@ -511,9 +524,9 @@ const processCommand = async (transcript) => {
   }
 
   setTimeout(() => {
-    if (!speechService.isManuallyStopped()) {
-      toggleListening(true);
-    }
+    // Clear the manual-stop flag so toggleListening can restart cleanly.
+    speechService.resetManualStop();
+    toggleListening(true);
   }, 500);
 };
 
@@ -545,6 +558,9 @@ const handleError = (error) => {
     case "not-allowed":
     case "service-not-allowed":
       errorMessage = t("err.micDenied");
+      break;
+    case "audio-capture":
+      errorMessage = t("err.audioCapture");
       break;
     case "not-supported":
       errorMessage = t("err.notSupported");

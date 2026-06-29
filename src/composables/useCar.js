@@ -792,14 +792,18 @@ export function useCar() {
       return message;
     }
 
-    if (engineStatus.value) {
+    if (engineStatus.value && !pitting.value) {
       const message = t("msg.compoundPitFirst");
       await ttsService.speak(message);
       return message;
     }
 
     tireCompound.value = TIRE_COMPOUNDS[key].label;
-    tireLife.value = 100;
+    // Only restore tire life during a pit stop — otherwise the compound
+    // change is just a label swap (no free tires outside the pits).
+    if (pitting.value) {
+      tireLife.value = 100;
+    }
     const message = t("msg.compoundFitted", { label: TIRE_COMPOUNDS[key].label });
     await ttsService.speak(message);
     return message;
@@ -881,28 +885,39 @@ export function useCar() {
   };
 
   const performPitStop = async () => {
+    if (raceFinished.value) {
+      const message = t("msg.raceComplete");
+      await ttsService.speak(message);
+      return message;
+    }
+
     // Freeze the sim (fuel/tires/AI/lap-time) for the pit duration so the
     // stop is a real pause rather than a drain window.
     pitting.value = true;
-    await stopEngine(); // Use existing actions
-    await new Promise((resolve) =>
-      setTimeout(resolve, CAR_SETTINGS.PIT_STOP_DURATION_MS),
-    );
+    try {
+      await stopEngine();
+      await new Promise((resolve) =>
+        setTimeout(resolve, CAR_SETTINGS.PIT_STOP_DURATION_MS),
+      );
 
-    fuelLevel.value = 100;
-    batteryLevel.value = 100;
-    tireLife.value = 100;
-    carDamage.value = 0;
-    engineTemp.value = CAR_SETTINGS.TEMP_AMBIENT;
-    overheating.value = false;
-    lowFuelWarned.value = false;
-    lowBatteryWarned.value = false;
-    overheatWarned.value = false;
-    damageWarned.value = false;
-    pitting.value = false;
+      fuelLevel.value = 100;
+      batteryLevel.value = 100;
+      tireLife.value = 100;
+      carDamage.value = 0;
+      engineTemp.value = CAR_SETTINGS.TEMP_AMBIENT;
+      overheating.value = false;
+      lowFuelWarned.value = false;
+      lowBatteryWarned.value = false;
+      overheatWarned.value = false;
+      damageWarned.value = false;
 
-    await startEngine();
-    return t("msg.pitComplete");
+      await startEngine();
+      const message = t("msg.pitComplete");
+      await ttsService.speak(message);
+      return message;
+    } finally {
+      pitting.value = false;
+    }
   };
 
   const resetRace = async () => {

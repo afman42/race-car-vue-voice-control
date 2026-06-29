@@ -20,7 +20,7 @@ describe("useCar - extended features", () => {
   });
 
   describe("tire compounds", () => {
-    it("fits a new compound when the engine is off and resets life", async () => {
+    it("fits a new compound when the engine is off (label only, no free tires)", async () => {
       const { setTireCompound, tireCompound, tireLife } = useCar();
       tireLife.value = 40;
 
@@ -28,7 +28,7 @@ describe("useCar - extended features", () => {
 
       expect(message).toBe("Soft tires fitted.");
       expect(tireCompound.value).toBe(TIRE_COMPOUNDS.SOFT.label);
-      expect(tireLife.value).toBe(100);
+      expect(tireLife.value).toBe(40); // not reset outside pit stop
     });
 
     it("refuses to change compound while the engine runs", async () => {
