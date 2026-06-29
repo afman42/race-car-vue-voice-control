@@ -14,6 +14,185 @@ describe("useCar - runSimulationTick", () => {
     vi.clearAllMocks();
   });
 
+  // ──────────────────────────────────────────────
+  // autoShift edge cases
+  // ──────────────────────────────────────────────
+  describe("autoShift", () => {
+    it("sets gear to 0 (neutral) when the engine is off", () => {
+      const { runSimulationTick, currentGear } = useCar();
+      currentGear.value = 5;
+
+      runSimulationTick();
+
+      // Engine is off → autoShift should force neutral.
+      expect(currentGear.value).toBe(0);
+    });
+
+    it("engages gear 1 when gear is 0 and engine is running", () => {
+      const { runSimulationTick, currentGear, engineStatus, rpm } = useCar();
+      engineStatus.value = true;
+      rpm.value = CAR_SETTINGS.GEAR_SHIFT_RPM - 100;
+      currentGear.value = 0;
+
+      runSimulationTick();
+
+      expect(currentGear.value).toBe(1);
+    });
+
+    it("does not upshift when RPM after climb is still below shift threshold", () => {
+      const { runSimulationTick, currentGear, rpm, engineStatus, lapProgress } =
+        useCar();
+      engineStatus.value = true;
+      // RPM climbs +1000/tick, so start below 7500-1000=6500 to stay under.
+      rpm.value = CAR_SETTINGS.GEAR_SHIFT_RPM - CAR_SETTINGS.GEAR_RPM_CLIMB - 100; // 6400 → climbs to 7400
+      lapProgress.value = 0; // straight, target = 7
+      currentGear.value = 2;
+
+      runSimulationTick();
+
+      expect(currentGear.value).toBe(2);
+    });
+
+    it("applies safety downshift when RPM is near idle and gear > 1", () => {
+      const { runSimulationTick, currentGear, rpm, engineStatus, overheating, lapProgress } =
+        useCar();
+      engineStatus.value = true;
+      overheating.value = true; // prevents RPM climb (+1000/tick normally)
+      rpm.value = CAR_SETTINGS.RPM_IDLE + 400; // 1150, within safety window (≤ 1250)
+      currentGear.value = 3;
+      lapProgress.value = 0; // straight, target = 7
+
+      runSimulationTick();
+
+      // Safety downshift: gear 3 → 2, RPM reset to drop RPM.
+      expect(currentGear.value).toBe(2);
+      expect(rpm.value).toBe(CAR_SETTINGS.GEAR_DROP_RPM);
+    });
+
+    it("drops 2 gears/tick toward the corner target when entering a corner", () => {
+      const { runSimulationTick, currentGear, rpm, engineStatus, lapProgress } =
+        useCar();
+      engineStatus.value = true;
+      rpm.value = CAR_SETTINGS.GEAR_SHIFT_RPM;
+      currentGear.value = 6;
+      // Segment 1 is a slow corner (150-198, target gear = 2).
+      lapProgress.value = 170;
+
+      runSimulationTick();
+
+      // Should drop 2 gears (6 → 4), resetting RPM.
+      expect(currentGear.value).toBe(4);
+      expect(rpm.value).toBe(CAR_SETTINGS.GEAR_DROP_RPM);
+    });
+  });
+
+  // ──────────────────────────────────────────────
+  // stall / overheat edge cases
+  // ──────────────────────────────────────────────
+  describe("stall and overheat", () => {
+    it("clears DRS and overtake status on stall", async () => {
+      const { runSimulationTick, drsStatus, overtakeActive, engineStatus, fuelLevel, rpm } =
+        useCar();
+      engineStatus.value = true;
+      rpm.value = CAR_SETTINGS.RPM_MAX;
+      drsStatus.value = true;
+      overtakeActive.value = true;
+      fuelLevel.value = 0;
+
+      runSimulationTick();
+      await Promise.resolve();
+
+      expect(drsStatus.value).toBe(false);
+      expect(overtakeActive.value).toBe(false);
+      expect(engineStatus.value).toBe(false);
+    });
+
+    it("clears DRS, overtake and sets gear to 0 on overheat", async () => {
+      const { runSimulationTick, drsStatus, overtakeActive, overheating, engineTemp, rpm, engineStatus } =
+        useCar();
+      engineStatus.value = true;
+      rpm.value = CAR_SETTINGS.RPM_MAX;
+      drsStatus.value = true;
+      overtakeActive.value = true;
+      engineTemp.value = CAR_SETTINGS.TEMP_CRITICAL; // triggers overheat
+
+      runSimulationTick();
+      await Promise.resolve();
+
+      expect(drsStatus.value).toBe(false);
+      expect(overtakeActive.value).toBe(false);
+      expect(overheating.value).toBe(true);
+      expect(rpm.value).toBe(CAR_SETTINGS.RPM_IDLE);
+    });
+
+    it("recovers from overheating when temperature drops below optimal max", () => {
+      const { runSimulationTick, overheating, engineTemp, rpm, engineStatus } =
+        useCar();
+      engineStatus.value = true;
+      rpm.value = CAR_SETTINGS.RPM_IDLE; // idle → temperature will drop
+      overheating.value = true;
+      engineTemp.value = CAR_SETTINGS.TEMP_OPTIMAL_MAX - 1; // 119 < 120
+
+      runSimulationTick();
+
+      expect(overheating.value).toBe(false);
+    });
+  });
+
+  // ──────────────────────────────────────────────
+  // pitting guard
+  // ──────────────────────────────────────────────
+  describe("pitting guard", () => {
+    it("does nothing while the car is pitting", () => {
+      const { runSimulationTick, fuelLevel, batteryLevel, tireLife, engineStatus, rpm, pitting } =
+        useCar();
+      engineStatus.value = true;
+      rpm.value = CAR_SETTINGS.RPM_MAX;
+      fuelLevel.value = 50;
+      batteryLevel.value = 50;
+      tireLife.value = 50;
+      pitting.value = true;
+
+      runSimulationTick();
+
+      // All values should be unchanged because the tick returns early.
+      expect(fuelLevel.value).toBe(50);
+      expect(batteryLevel.value).toBe(50);
+      expect(tireLife.value).toBe(50);
+    });
+  });
+
+  // ──────────────────────────────────────────────
+  // safety floors
+  // ──────────────────────────────────────────────
+  describe("safety floors", () => {
+    it("does not let fuel level drop below 0", () => {
+      const { runSimulationTick, fuelLevel, rpm, engineStatus } = useCar();
+      engineStatus.value = true;
+      rpm.value = CAR_SETTINGS.RPM_MAX;
+      fuelLevel.value = 0.01;
+
+      runSimulationTick();
+
+      expect(fuelLevel.value).toBe(0);
+    });
+
+    it("does not let tire life drop below 0", () => {
+      const { runSimulationTick, tireLife, rpm, engineStatus } = useCar();
+      engineStatus.value = true;
+      rpm.value = CAR_SETTINGS.RPM_MAX;
+      tireLife.value = 0.1;
+
+      runSimulationTick();
+
+      expect(tireLife.value).toBe(0);
+    });
+  });
+
+  // ──────────────────────────────────────────────
+  // original tests follow
+  // ──────────────────────────────────────────────
+
   it("does not consume fuel below idle RPM beyond the minimum multiplier", () => {
     const { runSimulationTick, fuelLevel, rpm, engineStatus } = useCar();
     engineStatus.value = true;

@@ -164,6 +164,21 @@ describe("useCar Composable", () => {
       expect(batteryLevel.value).toBe(before - CAR_SETTINGS.OVERTAKE_BATTERY_COST);
       expect(audioService.playSound).toHaveBeenCalledWith("overtakeOn");
     });
+
+    it("should report already active when overtake is already on", async () => {
+      const { startEngine, activateOvertake } = useCar();
+      await startEngine();
+
+      // First call succeeds.
+      await activateOvertake();
+      vi.clearAllMocks();
+
+      // Second call while still active.
+      const message = await activateOvertake();
+
+      expect(message).toBe("Overtake is already active.");
+      expect(audioService.playSound).not.toHaveBeenCalled();
+    });
   });
 
   describe("fuel mix", () => {
@@ -223,6 +238,36 @@ describe("useCar Composable", () => {
       expect(batteryLevel.value).toBe(100);
       expect(tireLife.value).toBe(100);
       vi.useRealTimers();
+    });
+
+    it("returns race complete message when the race is finished", async () => {
+      const { performPitStop, raceFinished } = useCar();
+      raceFinished.value = true;
+
+      const message = await performPitStop();
+
+      expect(message).toBe("Race complete.");
+    });
+  });
+
+  describe("car selection", () => {
+    it("rejects car selection while the engine is running", async () => {
+      const { selectCar, startEngine } = useCar();
+      await startEngine();
+
+      const message = await selectCar("speedster");
+
+      expect(message).toBe("Stop the engine before selecting a car.");
+    });
+
+    it("rejects unknown car IDs", async () => {
+      const { selectCar, selectedCar } = useCar();
+      const before = selectedCar.value.id;
+
+      const message = await selectCar("nonexistent");
+
+      expect(message).toBe("Unknown car: nonexistent.");
+      expect(selectedCar.value.id).toBe(before);
     });
   });
 });

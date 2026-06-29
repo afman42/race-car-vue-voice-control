@@ -302,6 +302,79 @@ describe("RaceControl.vue", () => {
     });
   });
 
+  describe("runCommand edge cases", () => {
+    it("handles null or undefined command gracefully", async () => {
+      const wrapper = mount(RaceControl);
+      const { runCommand } = wrapper.vm;
+
+      const msgNull = await runCommand(null);
+      expect(msgNull).toContain("not recognized");
+
+      const msgUndef = await runCommand(undefined);
+      expect(msgUndef).toContain("not recognized");
+
+      const msgUnknown = await runCommand("fly");
+      expect(msgUnknown).toContain("Command not recognized");
+    });
+
+    it("starts overtake countdown when overtake command succeeds", async () => {
+      const wrapper = mount(RaceControl);
+      const { startEngine, overtakeActive } = useCar();
+      await startEngine();
+
+      const { runCommand } = wrapper.vm;
+      await runCommand("overtake");
+
+      expect(overtakeActive.value).toBe(true);
+    });
+  });
+
+  describe("gear flash", () => {
+    it("applies the shifting class when gear changes", async () => {
+      const wrapper = mount(RaceControl);
+      const { currentGear } = useCar();
+
+      // Gear starts at 0 (N) — no shifting class.
+      // The gear-indicator div uses :class="{ shifting: gearFlash }".
+      const gearIndicator = wrapper.find(".gear-indicator");
+      expect(gearIndicator.classes()).not.toContain("shifting");
+
+      // Trigger a gear change.
+      currentGear.value = 1;
+      await flush();
+
+      expect(gearIndicator.classes()).toContain("shifting");
+    });
+  });
+
+  describe("segment wrapping", () => {
+    it("wraps segment display when lapProgress exceeds LAP_DISTANCE", async () => {
+      const wrapper = mount(RaceControl);
+      const { lapProgress } = useCar();
+
+      // Move past the first lap distance → wraps back to start of track.
+      lapProgress.value = CAR_SETTINGS.LAP_DISTANCE + 50; // 650 → wraps to 50 (still in straight)
+      await flush();
+
+      const segDisplay = wrapper.find(".segment-display");
+      expect(segDisplay.exists()).toBe(true);
+      expect(segDisplay.text()).toContain("STRAIGHT");
+    });
+
+    it("transitions from last straight back to first corner after wrap", async () => {
+      const wrapper = mount(RaceControl);
+      const { lapProgress } = useCar();
+
+      // Last segment is straight (length 120, starts at 480).
+      // Wrap to first corner segment.
+      lapProgress.value = CAR_SETTINGS.LAP_DISTANCE + 155; // 755 → wraps to 155 (in first corner)
+      await flush();
+
+      const segDisplay = wrapper.find(".segment-display");
+      expect(segDisplay.text()).toContain("SLOW");
+    });
+  });
+
   describe("track segments", () => {
     it("renders the segment display in the dashboard", () => {
       const wrapper = mount(RaceControl);
