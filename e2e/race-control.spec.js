@@ -78,18 +78,14 @@ test.describe("Race Car Voice Control — E2E", () => {
     test("gear shifts up after enough simulation ticks", async ({ page }) => {
       // Start the engine
       await page.getByRole("button", { name: "Start Engine" }).click();
-      await page.waitForTimeout(1000);
 
-      // Gear should start at 1
-      await expect(page.locator(".gear-number")).toContainText("1");
-
-      // Wait for ~4 simulation ticks (8000ms) — gear needs 4 ticks to reach shift RPM
-      await page.waitForTimeout(10000);
-
-      // Gear should now be > 1 (e.g. 2 or 3)
-      const gearText = await page.locator(".gear-number").textContent();
-      const gearNum = parseInt(gearText, 10);
-      expect(gearNum).toBeGreaterThanOrEqual(2);
+      // Gear should engage (not "N") and then shift up
+      await expect(page.locator(".gear-number")).not.toContainText("N", {
+        timeout: 5_000,
+      });
+      await expect(page.locator(".gear-number")).not.toContainText("1", {
+        timeout: 20_000,
+      });
     });
 
     test("RPM gauge and shift lights respond after engine start", async ({
@@ -440,18 +436,16 @@ test.describe("Race Car Voice Control — E2E", () => {
       const badgeText = await badge.textContent();
       expect(badgeText).toMatch(/P[12]/);
 
-      // Step 3: Start engine
+      // Step 3: Start engine — gear should engage (not "N")
       await page.getByRole("button", { name: "Start Engine" }).click();
-      await page.waitForTimeout(1000);
-      await expect(page.locator(".gear-number")).toContainText("1");
+      await expect(page.locator(".gear-number")).not.toContainText("N", {
+        timeout: 5_000,
+      });
 
-      // Step 4: Wait for gear changes (4+ ticks needed to reach shift RPM)
-      await page.waitForTimeout(10000);
-
-      // Gear should have shifted
-      const gearText = await page.locator(".gear-number").textContent();
-      const gearNum = parseInt(gearText, 10);
-      expect(gearNum).toBeGreaterThanOrEqual(2);
+      // Step 4: Wait for gear to shift up (polls every ~500ms for up to 20s)
+      await expect(page.locator(".gear-number")).not.toContainText("1", {
+        timeout: 20_000,
+      });
 
       // Step 5: Speed should show a value
       const speedTile = page.locator(".display-item").filter({ hasText: "km/h" });

@@ -46,10 +46,10 @@ export const CAR_SETTINGS = {
   // Engine temperature (degrees C). Rises with RPM/overtake, cools toward
   // ambient otherwise. Above the critical threshold the engine cuts power.
   TEMP_AMBIENT: 90,
-  TEMP_OPTIMAL_MAX: 110,
-  TEMP_CRITICAL: 130,
-  TEMP_RISE_RATE: 4,   // max degrees gained per tick at full RPM
-  TEMP_COOL_RATE: 3,   // degrees shed per tick toward ambient
+  TEMP_OPTIMAL_MAX: 120,
+  TEMP_CRITICAL: 140,
+  TEMP_RISE_RATE: 3,   // max degrees gained per tick at full RPM
+  TEMP_COOL_RATE: 4,   // degrees shed per tick toward ambient
   TEMP_OVERTAKE_PENALTY: 4, // extra degrees per tick while overtaking
 
   // Lap timing: simulated milliseconds added to the current lap each tick.
