@@ -190,9 +190,21 @@ export default {
         masterGain.gain.linearRampToValueAtTime(0.001, now + 0.3);
       }
 
-      // Stop oscillators after the fade completes.
-      for (const { osc } of layers) {
-        osc.stop(now + 0.35);
+      // Stop oscillators after the fade completes, then disconnect all nodes
+      // so Web Audio doesn't leak them (nodes persist until disconnected).
+      for (const { osc, gainNode } of layers) {
+        try {
+          osc.stop(now + 0.35);
+          osc.disconnect();
+          if (gainNode) gainNode.disconnect();
+        } catch {
+          // Ignore errors during cleanup.
+        }
+      }
+      try {
+        if (masterGain) masterGain.disconnect();
+      } catch {
+        // Ignore errors during cleanup.
       }
     } catch {
       // Ignore errors during cleanup.

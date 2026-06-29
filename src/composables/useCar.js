@@ -58,6 +58,7 @@ const overheating = ref(false);
 const currentLap = ref(1);
 const lapProgress = ref(0); // 0..LAP_DISTANCE accumulated within the lap
 const raceFinished = ref(false);
+const pitting = ref(false);
 
 // --- LAP TIMING + LEADERBOARD ---
 // currentLapTime accrues simulated milliseconds each tick; on lap completion it
@@ -81,6 +82,7 @@ const ai = useAiRival();
 let simulationInterval = null;
 let overtakeTimeout = null;
 let lastSegmentIndex = -1;
+let simWatcherRegistered = false;
 
 // Find which track segment a lap progress value falls within.
 // Handles wrapping so progress > LAP_DISTANCE wraps back to the start.
@@ -103,6 +105,52 @@ const lowFuelWarned = ref(false);
 const lowBatteryWarned = ref(false);
 const overheatWarned = ref(false);
 const damageWarned = ref(false);
+
+/**
+ * Reset all module-scope singleton refs to their initial values.
+ * Used by tests and HMR to avoid state leaking across module reloads.
+ * @returns {void}
+ */
+export function _resetSingletons() {
+  if (simulationInterval) {
+    clearInterval(simulationInterval);
+    simulationInterval = null;
+  }
+  if (overtakeTimeout) {
+    clearTimeout(overtakeTimeout);
+    overtakeTimeout = null;
+  }
+  lastSegmentIndex = -1;
+  simWatcherRegistered = false;
+  engineStatus.value = false;
+  rpm.value = 0;
+  currentGear.value = 0;
+  currentSegmentIndex.value = 0;
+  drsStatus.value = false;
+  overtakeActive.value = false;
+  pitting.value = false;
+  tireLife.value = 100;
+  tireCompound.value = TIRE_COMPOUNDS.MEDIUM.label;
+  fuelLevel.value = 100;
+  batteryLevel.value = 100;
+  fuelMix.value = FUEL_MIXES.STANDARD;
+  ersMode.value = ERS_MODES.BALANCED.label;
+  engineTemp.value = CAR_SETTINGS.TEMP_AMBIENT;
+  overheating.value = false;
+  currentLap.value = 1;
+  lapProgress.value = 0;
+  raceFinished.value = false;
+  currentLapTime.value = 0;
+  lastLapTime.value = null;
+  bestLapTime.value = null;
+  leaderboard.value = [];
+  weather.value = WEATHER_CONDITIONS.DRY.label;
+  carDamage.value = 0;
+  lowFuelWarned.value = false;
+  lowBatteryWarned.value = false;
+  overheatWarned.value = false;
+  damageWarned.value = false;
+}
 
 // This function is our composable.
 export function useCar() {
@@ -154,8 +202,10 @@ export function useCar() {
       : 0;
     const seg = findSegmentAtProgress(lapProgress.value);
     const cf = seg.segment.type === "corner" ? CAR_SETTINGS.CORNER_SPEED_CAP : 1.0;
+    // DRS grants a straight-line speed boost (only on straights, per F1 rules).
+    const drsBoost = drsStatus.value && seg.segment.type === "straight" ? 1.12 : 1.0;
     const base = 50 + ratio * gr * 200;
-    const raw = base * cf * (weatherConfig().gripFactor || 1.0) * paceFactor.value;
+    const raw = base * cf * drsBoost * (weatherConfig().gripFactor || 1.0) * paceFactor.value;
     return Math.round(raw);
   });
 
@@ -316,12 +366,16 @@ export function useCar() {
         ? CAR_SETTINGS.CORNER_SPEED_CAP
         : 1.0;
 
+    // DRS boosts pace on straights (real F1: DRS is disabled in corners).
+    const drsBoost =
+      drsStatus.value && startSeg.segment.type === "straight" ? 1.12 : 1.0;
+
     // Apply the speed and check if we crossed a segment boundary mid-tick.
     // If the new segment is a different type (straight ↔ corner), recalculate
     // with that segment's factor so corner entries slow down and exits speed
     // up within the same tick.
     const beforeProgress = lapProgress.value;
-    lapProgress.value += rawSpeed * startCornerFactor;
+    lapProgress.value += rawSpeed * startCornerFactor * drsBoost;
 
     const endSeg = findSegmentAtProgress(lapProgress.value);
     if (endSeg.index !== startSeg.index) {
@@ -335,11 +389,30 @@ export function useCar() {
     while (lapProgress.value >= CAR_SETTINGS.LAP_DISTANCE) {
       lapProgress.value -= CAR_SETTINGS.LAP_DISTANCE;
       // Bank the time posted for the lap just completed and reset the clock.
-      recordLap(currentLap.value, currentLapTime.value);
+      // Guard against a 0ms lap when two laps cross in a single tick: after
+      // the first iteration currentLapTime is reset to 0, so the second lap
+      // would record a bogus 0:00.000 entry. Only record real (positive) times.
+      if (currentLapTime.value > 0) {
+        recordLap(currentLap.value, currentLapTime.value);
+      }
       currentLapTime.value = 0;
       if (currentLap.value >= CAR_SETTINGS.TOTAL_LAPS) {
         raceFinished.value = true;
         lapProgress.value = 0;
+        // Stop the engine so all dashboard items (engine, gear, RPM, etc.)
+        // freeze in their final post-race state.
+        engineStatus.value = false;
+        rpm.value = 0;
+        currentGear.value = 0;
+        drsStatus.value = false;
+        overtakeActive.value = false;
+        // Clear any pending overtake timeout so "Overtake finished" doesn't
+        // announce awkwardly after the checkered flag.
+        if (overtakeTimeout) {
+          clearTimeout(overtakeTimeout);
+          overtakeTimeout = null;
+        }
+        engineAudioService.stop();
         ttsService.speak(t("msg.checkeredFlag"));
         return;
       }
@@ -381,6 +454,9 @@ export function useCar() {
   };
 
   const runSimulationTick = () => {
+    // Skip the sim entirely while a pit stop is in progress so fuel, tires,
+    // engine temp, lap time, and the AI rival all freeze for the duration.
+    if (pitting.value) return;
     const ratio = normalizedRpmRatio();
 
     // Fuel consumption scales with the selected fuel mix and current RPM.
@@ -496,6 +572,10 @@ export function useCar() {
   };
 
   const stallEngine = async () => {
+    if (overtakeTimeout) {
+      clearTimeout(overtakeTimeout);
+      overtakeTimeout = null;
+    }
     engineStatus.value = false;
     rpm.value = 0;
     currentGear.value = 0;
@@ -506,6 +586,10 @@ export function useCar() {
   };
 
   const overheatEngine = async () => {
+    if (overtakeTimeout) {
+      clearTimeout(overtakeTimeout);
+      overtakeTimeout = null;
+    }
     // Power cut: drop revs to idle and disable boosting systems.
     overheating.value = true;
     drsStatus.value = false;
@@ -562,6 +646,10 @@ export function useCar() {
       return message;
     }
 
+    if (overtakeTimeout) {
+      clearTimeout(overtakeTimeout);
+      overtakeTimeout = null;
+    }
     engineStatus.value = false;
     rpm.value = 0;
     currentGear.value = 0;
@@ -772,6 +860,9 @@ export function useCar() {
   };
 
   const performPitStop = async () => {
+    // Freeze the sim (fuel/tires/AI/lap-time) for the pit duration so the
+    // stop is a real pause rather than a drain window.
+    pitting.value = true;
     await stopEngine(); // Use existing actions
     await new Promise((resolve) =>
       setTimeout(resolve, CAR_SETTINGS.PIT_STOP_DURATION_MS),
@@ -787,6 +878,7 @@ export function useCar() {
     lowBatteryWarned.value = false;
     overheatWarned.value = false;
     damageWarned.value = false;
+    pitting.value = false;
 
     await startEngine();
     return t("msg.pitComplete");
@@ -801,6 +893,7 @@ export function useCar() {
     currentGear.value = 0;
     drsStatus.value = false;
     overtakeActive.value = false;
+    pitting.value = false;
     tireLife.value = 100;
     tireCompound.value = TIRE_COMPOUNDS.MEDIUM.label;
     fuelLevel.value = 100;
@@ -841,24 +934,30 @@ export function useCar() {
   // --- WATCHER FOR SIMULATION ---
   // The sim loop runs while the engine is on OR an AI rival is still racing, so
   // the rival keeps lapping even if the player never starts their own engine.
-  watch(
-    [engineStatus, ai.enabled, ai.finished],
-    () => {
-      const shouldRun =
-        engineStatus.value || (ai.enabled.value && !ai.finished.value);
-      if (shouldRun) {
-        if (simulationInterval) clearInterval(simulationInterval);
-        simulationInterval = setInterval(
-          runSimulationTick,
-          CAR_SETTINGS.SIMULATION_TICK_MS,
-        );
-      } else {
-        if (simulationInterval) clearInterval(simulationInterval);
-        simulationInterval = null;
-      }
-    },
-    { immediate: true },
-  );
+  // Guard with a module-scope flag so the watcher + interval are registered
+  // only once even if useCar() is called from multiple components.
+  if (!simWatcherRegistered) {
+    simWatcherRegistered = true;
+    watch(
+      [engineStatus, ai.enabled, ai.finished, pitting],
+      () => {
+        const shouldRun =
+          !pitting.value &&
+          (engineStatus.value || (ai.enabled.value && !ai.finished.value));
+        if (shouldRun) {
+          if (simulationInterval) clearInterval(simulationInterval);
+          simulationInterval = setInterval(
+            runSimulationTick,
+            CAR_SETTINGS.SIMULATION_TICK_MS,
+          );
+        } else {
+          if (simulationInterval) clearInterval(simulationInterval);
+          simulationInterval = null;
+        }
+      },
+      { immediate: true },
+    );
+  }
 
   // Clean up the simulation interval when the hosting component unmounts.
   // Guard with getCurrentInstance so this is a no-op when called outside
@@ -893,6 +992,7 @@ export function useCar() {
     currentLap,
     lapProgress,
     raceFinished,
+    pitting,
     currentLapTime,
     lastLapTime,
     bestLapTime,

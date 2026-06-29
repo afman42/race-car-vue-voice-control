@@ -1,6 +1,6 @@
 # Simulation Model
 
-The car simulation runs on a **2-second tick interval** (`CAR_SETTINGS.SIMULATION_TICK_MS`). Each tick updates all systems sequentially while the engine is on or an AI rival is still racing.
+The car simulation runs on a **250ms tick interval** (`CAR_SETTINGS.SIMULATION_TICK_MS`). Each tick updates all systems sequentially while the engine is on or an AI rival is still racing. The sim freezes entirely during a pit stop.
 
 ---
 
@@ -14,7 +14,7 @@ The car simulation runs on a **2-second tick interval** (`CAR_SETTINGS.SIMULATIO
 | **Engine Temp** | Rises with RPM + overtaking, cools toward 90°C ambient | Rise 4°C/tick, Cool 3°C/tick, Overtake +4°C/tick |
 | **Damage** | +4/tick while overheating, +2/tick on destroyed tires | Repaired only in pits; max 40% pace penalty at 100 damage |
 | **Gears** | RPM climbs 1000/tick; auto-upshift at 7500 RPM drops to 5000 RPM. Track-aware: upshifts on straights, downshifts into corners (2 gears/tick) | 7 gears with speed multipliers from 0.45× (1st) to 1.55× (7th). Corner targets: slow=2nd, medium=3rd, fast=4th |
-| **Lap Progress** | Distance accrues proportional to RPM × gear ratio × grip × pace × cornerFactor | 100 distance units per lap; 10 laps total. Corners capped at 55% speed |
+| **Lap Progress** | Distance accrues proportional to RPM × gear ratio × grip × pace × cornerFactor × DRS boost (straights only) | 100 distance units per lap; 10 laps total. Corners capped at 55% speed. DRS grants +12% pace on straights |
 | **Lap Timing** | +400ms simulated time per tick | Top 5 fastest laps kept on leaderboard |
 | **AI Rival** | Independent lap-time generator (no physics) | Base 8000ms/lap; difficulty sets pace ± variance |
 
@@ -65,7 +65,7 @@ The car simulation runs on a **2-second tick interval** (`CAR_SETTINGS.SIMULATIO
 | **Warning latches** | Each critical threshold triggers exactly one voice alert per crossing. |
 | **Post-race** | Simulation stops after the final lap. The AI rival can still finish independently. |
 | **Battery cap** | Recharge stops at 100%. |
-| **Pit stop** | Stops engine → waits 4s → refuels 100% → restarts engine. Repairs all damage and fits fresh tires. |
+| **Pit stop** | Stops engine → freezes sim (fuel/tires/AI/lap-time all pause) → waits 4s → refuels 100% → restarts engine. Repairs all damage and fits fresh tires. |
 
 ---
 
@@ -83,7 +83,7 @@ All tunable constants live in [`src/config.js`](../src/config.js).
   OVERTAKE_DURATION_MS: 8000,
   OVERTAKE_BATTERY_COST: 20,
   PIT_STOP_DURATION_MS: 4000,
-  SIMULATION_TICK_MS: 2000,          // 2-second tick interval
+  SIMULATION_TICK_MS: 250,           # 250ms tick interval (8x smoother than original 2s)
   FUEL_CONSUMPTION_RATE: {
     LEAN: 0.08, STANDARD: 0.2, RICH: 0.48
   },

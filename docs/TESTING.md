@@ -7,10 +7,10 @@ The project runs two test suites: **unit tests** (Vitest) and **end-to-end tests
 ## Quick Commands
 
 ```bash
-pnpm test:run         # Unit tests (Vitest, single run) — ~159 tests
+pnpm test:run         # Unit tests (Vitest, single run) — 164 tests
 pnpm test             # Unit tests in watch mode
 pnpm test:ui          # Vitest UI dashboard
-pnpm test:e2e         # E2E tests (Playwright) — ~66 tests total
+pnpm test:e2e         # E2E tests (Playwright) — 67 tests total
 pnpm test:e2e:ui      # Playwright UI mode (interactive debug)
 ```
 
@@ -18,7 +18,7 @@ pnpm test:e2e:ui      # Playwright UI mode (interactive debug)
 
 ---
 
-## Unit Tests — Vitest (159 tests across 11 files)
+## Unit Tests — Vitest (164 tests across 10 files)
 
 ### Core Composable Tests
 
@@ -43,16 +43,16 @@ pnpm test:e2e:ui      # Playwright UI mode (interactive debug)
 | Test File | Tests | What It Covers |
 |---|---|---|
 | `commandRouter.spec.js` | 33 | Exact keyword matching, false-positive rejection (short strings), locale-specific matching, fuzzy (Levenshtein) matching with tolerance |
-| `RaceControl.spec.js` | 15 | Dashboard render, radio toggle, voice/manual command execution, AI controls (enable/disable), race standings display, unmount cleanup |
+| `RaceControl.spec.js` | 25 | Dashboard render, radio toggle, voice/manual command execution, AI controls (enable/disable), race standings display, track segments, unmount cleanup |
 
 ---
 
-## E2E Tests — Playwright (66 tests across 2 files)
+## E2E Tests — Playwright (67 tests across 2 files)
 
 | Test File | Tests | What It Covers |
 |---|---|---|
 | `race-control.spec.js` | 28 | Initial state, engine & gear simulation, AI difficulty buttons, DRS/overtake, weather, fuel/ERS/tires, status queries, language switch, track map, manual controls, reset, full race flow |
-| `race-app.spec.js` | 38 | Initial state, engine & gears, AI rival difficulty, manual controls (all subsystems), language toggle, lap timing & leaderboard, weather cycling, status commands, race progression, reset, AI gap tracking |
+| `race-app.spec.js` | 39 | Initial state, engine & gears, AI rival difficulty, manual controls (all subsystems), language toggle, lap timing & leaderboard, weather cycling, status commands, race progression (incl. race-completion freeze), reset, AI gap tracking |
 
 ### E2E Test Patterns
 
@@ -78,7 +78,7 @@ if (aiEnabled.value) await disableAi();
 
 ### Simulation Edge Cases
 
-To test simulation ticks without waiting 2 seconds, the `runSimulationTick` function is exposed and called directly:
+To test simulation ticks without waiting 250ms, the `runSimulationTick` function is exposed and called directly:
 
 ```js
 const { runSimulationTick, fuelLevel } = useCar();

@@ -165,16 +165,21 @@ describe("useCar - extended features", () => {
       expect(currentLap.value).toBeGreaterThan(startLap);
     });
 
-    it("finishes the race after the final lap", () => {
-      const { runSimulationTick, raceFinished, currentLap, rpm, engineStatus } =
+    it("finishes the race after the final lap and stops the engine", () => {
+      const { runSimulationTick, raceFinished, currentLap, rpm, engineStatus, currentGear } =
         useCar();
       engineStatus.value = true;
       rpm.value = CAR_SETTINGS.RPM_MAX;
+      currentGear.value = 5;
       currentLap.value = CAR_SETTINGS.TOTAL_LAPS;
 
       for (let i = 0; i < 60 && !raceFinished.value; i++) runSimulationTick();
 
       expect(raceFinished.value).toBe(true);
+      // Engine must stop so dashboard items freeze.
+      expect(engineStatus.value).toBe(false);
+      expect(rpm.value).toBe(0);
+      expect(currentGear.value).toBe(0);
       expect(ttsService.speak).toHaveBeenCalledWith(
         "Checkered flag. Race complete.",
       );

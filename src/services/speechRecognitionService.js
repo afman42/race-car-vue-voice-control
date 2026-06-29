@@ -11,6 +11,9 @@ const getRecognitionConstructor = () => {
 let recognition;
 let isManuallyStopped = false;
 let currentLang = "en-US";
+// Fatal errors that mean restarting would loop forever (mic denied, etc.).
+const FATAL_ERRORS = new Set(["not-allowed", "service-not-allowed", "audio-capture"]);
+let lastError = null;
 
 const ensureRecognition = () => {
   if (recognition) {
@@ -67,6 +70,7 @@ export default {
 
     // Set our flag to false when starting
     isManuallyStopped = false;
+    lastError = null;
 
     recognitionInstance.onresult = (event) => {
       const last = event.results.length - 1;
@@ -76,22 +80,25 @@ export default {
 
     recognitionInstance.onerror = (event) => {
       console.error("Speech recognition error:", event.error);
+      lastError = event.error;
       if (onErrorCallback) {
         onErrorCallback(event.error);
       }
     };
 
-    // *** THE KEY CHANGE IS HERE ***
     // Fired when the service stops for any reason.
     recognitionInstance.onend = () => {
-      // If it wasn't stopped by the user, restart it automatically.
-      if (!isManuallyStopped) {
+      // If it wasn't stopped by the user, restart it automatically — unless
+      // the last error was fatal (mic denied, no audio capture). Restarting
+      // after those would loop forever spamming recognition.start().
+      if (!isManuallyStopped && !FATAL_ERRORS.has(lastError)) {
         console.log("Recognition service ended, restarting...");
-        // We add a tiny delay to avoid overwhelming the browser
         setTimeout(() => recognitionInstance.start(), 100);
       } else {
-        console.log("Recognition service stopped by user.");
+        console.log("Recognition service stopped (manual or fatal error).");
       }
+      // Clear the error so a subsequent manual start isn't blocked by it.
+      lastError = null;
     };
 
     try {

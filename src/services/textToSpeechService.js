@@ -8,13 +8,26 @@ const synth =
 // BCP-47 language tag used to pick a matching voice (e.g. "en-US", "id-ID").
 let currentLang = "en-US";
 
+// Cached voice list. Populated lazily; refreshed on the voiceschanged event
+// (Chrome populates getVoices() async, so the first call often returns []).
+let cachedVoices = null;
+if (synth) {
+  synth.onvoiceschanged = () => {
+    cachedVoices = synth.getVoices();
+  };
+  // Eagerly populate in case the event already fired (some browsers do).
+  cachedVoices = synth.getVoices();
+}
+
 /**
  * Pick the best available voice for the current language.
  * Prefers an exact lang match, then a same-language match, then default.
  */
 const pickVoice = () => {
   if (!synth) return null;
-  const voices = synth.getVoices();
+  const voices = cachedVoices && cachedVoices.length > 0
+    ? cachedVoices
+    : synth.getVoices();
   if (!voices || voices.length === 0) return null;
 
   const short = currentLang.slice(0, 2).toLowerCase();

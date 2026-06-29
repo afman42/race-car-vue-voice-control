@@ -9,7 +9,8 @@ export const CAR_SETTINGS = {
   PIT_STOP_DURATION_MS: 4000,
   // Simulation tick rate. Lower = smoother, more responsive updates.
   // All per-tick rates below are scaled for this interval.
-  SIMULATION_TICK_MS: 2000,
+  // ponytail: was 2000ms — caused 30+ min races and jerky gauges. 250ms = smooth.
+  SIMULATION_TICK_MS: 250,
   FUEL_CONSUMPTION_RATE: {
     LEAN: 0.08,
     STANDARD: 0.2,
@@ -42,13 +43,12 @@ export const CAR_SETTINGS = {
   TEMP_AMBIENT: 90,
   TEMP_OPTIMAL_MAX: 110,
   TEMP_CRITICAL: 130,
-  TEMP_RISE_RATE: 4,   // max degrees gained per tick at full RPM (was 12)
-  TEMP_COOL_RATE: 3,   // degrees shed per tick toward ambient (was 8)
-  TEMP_OVERTAKE_PENALTY: 4, // extra degrees per tick while overtaking (was 10)
+  TEMP_RISE_RATE: 4,   // max degrees gained per tick at full RPM
+  TEMP_COOL_RATE: 3,   // degrees shed per tick toward ambient
+  TEMP_OVERTAKE_PENALTY: 4, // extra degrees per tick while overtaking
 
   // Lap timing: simulated milliseconds added to the current lap each tick.
   // Faster laps (higher RPM) finish in fewer ticks, so they post lower times.
-  // Lap timing: simulated milliseconds added to the current lap each tick.
   LAP_TIME_PER_TICK_MS: 400,
   LEADERBOARD_SIZE: 5, // how many fastest laps to keep on the board
 
@@ -75,7 +75,7 @@ export const CAR_SETTINGS = {
   GEAR_RATIOS: [0, 0.45, 0.60, 0.78, 0.95, 1.15, 1.35, 1.55],
   GEAR_SHIFT_RPM: 7500, // RPM threshold that triggers an upshift
   GEAR_DROP_RPM: 5000, // RPM drops to this after an upshift
-  GEAR_RPM_CLIMB: 1000, // RPM gained per tick while in gear (was 1500 at 5s tick)
+  GEAR_RPM_CLIMB: 1000, // RPM gained per tick while in gear
   GEAR_START_RPM: 4000, // RPM when the engine starts (car is ready to race)
 
   // Track layout: segments that make up each lap, defining where the car

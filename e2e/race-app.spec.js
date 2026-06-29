@@ -503,6 +503,44 @@ test.describe("Race progression", () => {
     await expect(playerMarker).toBeVisible();
     await expect(rivalMarker).toBeVisible();
   });
+
+  test("race completion stops engine and freezes dashboard", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    // 1. Start the engine so we have a live baseline.
+    await clickButton(page, "Start Engine");
+    await expect(dashboardTile(page, "Engine").first()).toContainText("ON", {
+      timeout: 10_000,
+    });
+
+    // 2. Use the dev-mode helper to instantly simulate race completion.
+    //    Avoids waiting minutes for all 10 laps to finish naturally.
+    await page.evaluate(() => {
+      if (typeof window.__simulateRaceEnd !== "function") {
+        throw new Error(
+          "window.__simulateRaceEnd not found — dev helper not available on this build. " +
+          "Make sure the app is built/served in dev mode (import.meta.env.DEV).",
+        );
+      }
+      window.__simulateRaceEnd();
+    });
+
+    // 3. Verify the post-race frozen dashboard state.
+    await expect(page.getByText("Race Complete")).toBeVisible();
+    await expect(dashboardTile(page, "Engine").first()).toContainText("OFF");
+    await expect(dashboardTile(page, "Gear")).toContainText("N");
+
+    const rpmText = await page.locator(".rpm-text").textContent();
+    expect(parseInt(rpmText, 10)).toBe(0);
+
+    await expect(dashboardTile(page, "DRS")).toContainText(/DISABLED/i);
+
+    // 4. Position badge still shows the final race position.
+    const badge = page.locator(".position-badge");
+    await expect(badge).toContainText(/P[12]/);
+  });
 });
 
 // ──────────────────────────────────────────────────

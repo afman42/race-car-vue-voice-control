@@ -57,22 +57,32 @@ src/
 ├── main.js                # App bootstrap
 ├── App.vue                # Root component (global font & dark theme)
 ├── components/
-│   └── RaceControl.vue    # Main UI: dashboard, controls, command dispatch
+│   ├── RaceControl.vue    # Main UI: dashboard, controls, command dispatch
+│   ├── TrackMap.vue       # SVG track map with player/rival markers
+│   ├── RpmGauge.vue       # RPM gauge with needle + shift lights
+│   ├── Leaderboard.vue    # Fastest laps board (player + AI)
+│   └── ManualControls.vue # On-screen button grid (keyboard fallback)
+├── commands/
+│   └── matchers.js        # Voice command keyword matchers (en + id)
 ├── composables/
 │   ├── useCar.js          # Core singleton: car state, simulation, actions
 │   ├── useAiRival.js      # AI rival singleton: lap-time generator
 │   └── commandRouter.js   # Voice transcript → command key (exact + fuzzy)
+├── locales/
+│   ├── en.js              # English message dictionary
+│   └── id.js              # Indonesian message dictionary
 ├── utils/
 │   ├── formatLapTime.js   # Lap time formatter (M:SS.mmm)
 │   └── raceStanding.js    # Progress, standings, position formatting
 └── services/
     ├── audioService.js              # Sound effects (graceful on failure)
-    ├── speechRecognitionService.js  # Web Speech API (auto-restart)
-    └── textToSpeechService.js       # Speech synthesis (voice matching)
+    ├── engineAudioService.js        # Synthesized engine pitch (Web Audio API)
+    ├── speechRecognitionService.js  # Web Speech API (auto-restart, fatal-error guard)
+    └── textToSpeechService.js       # Speech synthesis (voice matching, voiceschanged cache)
 
 e2e/
 ├── race-control.spec.js   # 28 Playwright tests for core dashboard flow
-└── race-app.spec.js       # 38 Playwright tests for comprehensive app behavior
+└── race-app.spec.js       # 39 Playwright tests for comprehensive app behavior
 ```
 
 ---

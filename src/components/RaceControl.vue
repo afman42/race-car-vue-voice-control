@@ -52,88 +52,14 @@
       <span class="pos-gap">{{ gapText }}</span>
     </div>
 
-    <div class="track-map">
-      <h3 class="visually-hidden">{{ t("ui.trackMap") }}</h3>
-      <svg
-        class="track-svg"
-        viewBox="0 0 100 60"
-        role="img"
-        :aria-label="trackAriaLabel"
-      >
-        <path
-          class="track-path"
-          ref="trackPath"
-          d="M 20 10 H 80 A 20 20 0 0 1 80 50 H 20 A 20 20 0 0 1 20 10 Z"
-        ></path>
-        <!-- Segment boundary markers (corner indicators) -->
-        <circle
-          v-for="(m, i) in segmentMarkers"
-          :key="`seg-${i}`"
-          :cx="m.x"
-          :cy="m.y"
-          r="2.5"
-          :class="[
-            'seg-boundary',
-            m.isCorner ? 'corner' : 'straight',
-            m.speed ? `speed-${m.speed}` : '',
-          ]"
-        ></circle>
-        <!-- Start/finish line -->
-        <line
-          class="start-finish"
-          :x1="segmentMarkers.length > 0 ? segmentMarkers[0].x : 20"
-          :y1="segmentMarkers.length > 0 ? segmentMarkers[0].y - 4 : 10"
-          :x2="segmentMarkers.length > 0 ? segmentMarkers[0].x : 20"
-          :y2="segmentMarkers.length > 0 ? segmentMarkers[0].y + 4 : 18"
-        />
-        <circle
-          class="track-marker player"
-          :cx="playerMarker.x"
-          :cy="playerMarker.y"
-          r="4"
-        ></circle>
-        <circle
-          v-if="aiEnabled"
-          class="track-marker rival"
-          :cx="rivalMarker.x"
-          :cy="rivalMarker.y"
-          r="4"
-        ></circle>
-        <!-- Segment legend (uses distinct classes to avoid counting in tests) -->
-        <g class="map-legend">
-          <circle cx="75" cy="7" r="2" class="legend-dot dot-straight" />
-          <text x="79" y="10" class="legend-label">{{ t("ui.segStraight") }}</text>
-          <circle cx="75" cy="15" r="2" class="legend-dot dot-corner-slow" />
-          <text x="79" y="18" class="legend-label">{{ t("ui.segCornerSlow") }}</text>
-          <circle cx="75" cy="23" r="2" class="legend-dot dot-corner-medium" />
-          <text x="79" y="26" class="legend-label">{{ t("ui.segCornerMedium") }}</text>
-          <circle cx="75" cy="31" r="2" class="legend-dot dot-corner-fast" />
-          <text x="79" y="34" class="legend-label">{{ t("ui.segCornerFast") }}</text>
-        </g>
-      </svg>
-    </div>
+    <TrackMap
+      :player-loop-pos="playerLoopPos"
+      :rival-loop-pos="rivalLoopPos"
+      :ai-enabled="aiEnabled"
+      :aria-label="trackAriaLabel"
+    />
 
-    <div class="gauge-container">
-      <svg
-        class="rpm-gauge"
-        viewBox="0 0 100 57"
-        role="img"
-        :aria-label="`Engine RPM ${rpm.toFixed(0)}`"
-      >
-        <path class="gauge-bg" d="M10 50 A 40 40 0 0 1 90 50"></path>
-        <path
-          class="gauge-needle"
-          d="M10 50 A 40 40 0 0 1 90 50"
-          ref="gaugeNeedlePath"
-          :style="{
-            strokeDasharray: gaugeCircumference,
-            strokeDashoffset: rpmNeedleOffset,
-          }"
-        ></path>
-        <text x="50" y="45" class="rpm-text">{{ rpm.toFixed(0) }}</text>
-        <text x="50" y="55" class="rpm-label">RPM</text>
-      </svg>
-    </div>
+    <RpmGauge :rpm="rpm" />
 
     <div class="dashboard">
       <div class="display-item">
@@ -155,7 +81,7 @@
             :key="i"
             class="shift-led"
             :class="{
-              active: rpm > CAR_SETTINGS.GEAR_SHIFT_RPM - (5 - i) * 600,
+              active: rpm > CAR_SETTINGS.GEAR_DROP_RPM - 200 + (i - 1) * 600,
               blink: rpm >= CAR_SETTINGS.GEAR_SHIFT_RPM - 200 && rpm < CAR_SETTINGS.GEAR_SHIFT_RPM,
               shift: rpm >= CAR_SETTINGS.GEAR_SHIFT_RPM,
             }"
@@ -287,55 +213,21 @@
       </div>
     </div>
 
-    <div
-      v-if="leaderboard.length"
-      class="leaderboard"
-      role="region"
-      :aria-label="t('ui.leaderboard')"
-    >
-      <h3>{{ t("ui.leaderboard") }}</h3>
-      <ol>
-        <li v-for="(entry, index) in leaderboard" :key="`${entry.lap}-${index}`">
-          <span class="lb-rank">{{ index + 1 }}</span>
-          <span class="lb-lap">{{ t("ui.lapShort", { lap: entry.lap }) }}</span>
-          <span class="lb-time">{{ formatLapTime(entry.time) }}</span>
-        </li>
-      </ol>
-    </div>
+    <Leaderboard
+      :entries="leaderboard"
+      :title="t('ui.leaderboard')"
+    />
+    <Leaderboard
+      v-if="aiEnabled"
+      :entries="aiLeaderboard"
+      :title="t('ui.aiBoard')"
+      ai-board
+    />
 
-    <div
-      v-if="aiEnabled && aiLeaderboard.length"
-      class="leaderboard ai-board"
-      role="region"
-      :aria-label="t('ui.aiBoard')"
-    >
-      <h3>{{ t("ui.aiBoard") }}</h3>
-      <ol>
-        <li
-          v-for="(entry, index) in aiLeaderboard"
-          :key="`ai-${entry.lap}-${index}`"
-        >
-          <span class="lb-rank">{{ index + 1 }}</span>
-          <span class="lb-lap">{{ t("ui.lapShort", { lap: entry.lap }) }}</span>
-          <span class="lb-time">{{ formatLapTime(entry.time) }}</span>
-        </li>
-      </ol>
-    </div>
-
-    <div class="manual-controls">
-      <h3>{{ t("ui.manualControls") }}</h3>
-      <div class="button-grid">
-        <button
-          v-for="ctrl in manualControls"
-          :key="ctrl.command"
-          class="ctrl-button"
-          :class="{ 'active-difficulty': ctrl.command === activeAiCommand }"
-          @click="runCommand(ctrl.command)"
-        >
-          {{ t(ctrl.labelKey) }}
-        </button>
-      </div>
-    </div>
+    <ManualControls
+      :active-ai-command="activeAiCommand"
+      @command="runCommand"
+    />
 
     <div class="transcript-log">
       <h3>{{ t("ui.lastCommand") }}</h3>
@@ -345,17 +237,19 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
-import { useCar } from "@/composables/useCar";
+import { ref, computed, watch, onUnmounted } from "vue";
+import { useCar, findSegmentAtProgress } from "@/composables/useCar";
 import { matchCommand } from "@/composables/commandRouter";
 import speechService from "@/services/speechRecognitionService";
 import ttsService from "@/services/textToSpeechService";
 import { useI18n } from "@/i18n";
 import { CAR_SETTINGS } from "@/config";
 import { formatPosition } from "@/utils/raceStanding";
-import { findSegmentAtProgress } from "@/composables/useCar";
+import TrackMap from "./TrackMap.vue";
+import RpmGauge from "./RpmGauge.vue";
+import Leaderboard from "./Leaderboard.vue";
+import ManualControls from "./ManualControls.vue";
 
-// --- 1. Get All Car Logic & State from the Composable ---
 const {
   engineStatus,
   rpm,
@@ -377,7 +271,6 @@ const {
   isLowBattery,
   isLowFuel,
   bestLapTime,
-  lastLapTime,
   currentLapTime,
   leaderboard,
   weather,
@@ -388,11 +281,9 @@ const {
   aiCurrentLap,
   aiBestLapTime,
   aiLeaderboard,
-  aiFinished,
   standings,
   playerLoopPos,
   rivalLoopPos,
-  currentSegmentIndex,
   speedKmh,
   startEngine,
   stopEngine,
@@ -421,11 +312,8 @@ const {
   formatLapTime,
 } = useCar();
 
-// --- i18n ---
 const { t, locale, speechLang, setLocale, SUPPORTED_LOCALES } = useI18n();
 
-// Keep both speech services in sync with the active locale, and update the
-// idle status message so it follows the language too.
 watch(
   speechLang,
   (lang) => {
@@ -439,26 +327,21 @@ const onLocaleChange = (event) => {
   setLocale(event.target.value);
 };
 
-// --- 2. UI-Only State (Specific to this component) ---
 const isListening = ref(false);
 const statusMessage = ref(t("ui.openRadio"));
 const lastTranscript = ref("...");
 
-// Keep the idle status text localized when the language changes while idle.
 watch(locale, () => {
   if (!isListening.value) {
     statusMessage.value = t("ui.openRadio");
   }
 });
 
-// Overtake countdown (percent remaining, 100 -> 0).
 const overtakeRemaining = ref(0);
 let overtakeCountdownInterval = null;
 
-// Track which AI command was last selected (for button highlighting).
 const activeAiCommand = ref(null);
 
-// Gear shift flash animation trigger.
 const gearFlash = ref(false);
 let gearFlashTimeout = null;
 
@@ -472,68 +355,6 @@ watch(currentGear, () => {
   }
 });
 
-// --- 3. DOM-Specific Logic (SVG Gauge Measurement) ---
-const gaugeNeedlePath = ref(null);
-const gaugeCircumference = ref(0);
-
-// Track map: measured path length lets us place markers via getPointAtLength.
-const trackPath = ref(null);
-const trackLength = ref(0);
-
-onMounted(() => {
-  if (
-    gaugeNeedlePath.value &&
-    typeof gaugeNeedlePath.value.getTotalLength === "function"
-  ) {
-    gaugeCircumference.value = gaugeNeedlePath.value.getTotalLength();
-  }
-  if (
-    trackPath.value &&
-    typeof trackPath.value.getTotalLength === "function"
-  ) {
-    trackLength.value = trackPath.value.getTotalLength();
-  }
-});
-
-const rpmNeedleOffset = computed(() => {
-  if (gaugeCircumference.value === 0) return gaugeCircumference.value;
-  const rpmPercentage = rpm.value / CAR_SETTINGS.RPM_MAX;
-  return gaugeCircumference.value * (1 - rpmPercentage);
-});
-
-// Resolve a 0..1 loop fraction to an {x, y} point on the track path. Falls back
-// to a fixed point when SVG geometry is unavailable (e.g. jsdom under tests).
-const pointAt = (fraction) => {
-  const path = trackPath.value;
-  if (
-    !path ||
-    trackLength.value === 0 ||
-    typeof path.getPointAtLength !== "function"
-  ) {
-    return { x: 50, y: 10 };
-  }
-  const pt = path.getPointAtLength(fraction * trackLength.value);
-  return { x: pt.x, y: pt.y };
-};
-
-const playerMarker = computed(() => pointAt(playerLoopPos.value));
-const rivalMarker = computed(() => pointAt(rivalLoopPos.value));
-
-// Pre-compute segment boundary positions along the track path (0..1).
-// Used to render colored markers on the SVG track map.
-const segmentBoundaries = computed(() => {
-  let accumulated = 0;
-  const boundaries = [];
-  for (const seg of CAR_SETTINGS.TRACK_LAYOUT) {
-    accumulated += seg.length;
-    boundaries.push(accumulated / CAR_SETTINGS.LAP_DISTANCE);
-  }
-  // The last boundary equals 1.0 (start/finish line), which is the same as 0.
-  return boundaries;
-});
-
-// Derive the current track segment directly from lapProgress so the UI stays
-// in sync even when lapProgress is set manually (important for tests).
 const currentSegmentInfo = computed(() => findSegmentAtProgress(lapProgress.value));
 const currentSegmentType = computed(() => currentSegmentInfo.value.segment.type);
 const currentSegmentSpeed = computed(() => currentSegmentInfo.value.segment.speed || null);
@@ -545,22 +366,6 @@ const currentSegmentLabel = computed(() => {
   return t("ui.segStraight");
 });
 
-// Compute marker positions for each segment boundary on the SVG path.
-const segmentMarkers = computed(() => {
-  return segmentBoundaries.value.map((frac, i) => {
-    const seg = CAR_SETTINGS.TRACK_LAYOUT[i % CAR_SETTINGS.TRACK_LAYOUT.length];
-    const isCorner = seg.type === "corner";
-    return {
-      frac,
-      x: pointAt(frac).x,
-      y: pointAt(frac).y,
-      isCorner,
-      speed: seg.speed || null,
-    };
-  });
-});
-
-// Position badge text derived from the shared standings computed.
 const positionLabel = computed(() =>
   formatPosition(standings.value.playerPosition),
 );
@@ -574,9 +379,6 @@ const trackAriaLabel = computed(() =>
   `${t("ui.trackMap")}: ${positionLabel.value}, ${gapText.value}`,
 );
 
-// --- 4. Command Dispatch ---
-
-// Maps command keys (from the router) to the composable action that runs them.
 const commandActions = {
   help: getHelp,
   pitStop: performPitStop,
@@ -616,47 +418,6 @@ const commandActions = {
   aiStatus: getAiStatus,
 };
 
-// #8: keyboard/click fallback so the app is usable without a microphone.
-const manualControls = [
-  { labelKey: "btn.startEngine", command: "startEngine" },
-  { labelKey: "btn.stopEngine", command: "stopEngine" },
-  { labelKey: "btn.drsOn", command: "activateDrs" },
-  { labelKey: "btn.drsOff", command: "deactivateDrs" },
-  { labelKey: "btn.overtake", command: "overtake" },
-  { labelKey: "btn.pitStop", command: "pitStop" },
-  { labelKey: "btn.mixLean", command: "fuelMixLean" },
-  { labelKey: "btn.mixStandard", command: "fuelMixStandard" },
-  { labelKey: "btn.mixRich", command: "fuelMixRich" },
-  { labelKey: "btn.ersHotlap", command: "ersHotlap" },
-  { labelKey: "btn.ersBalanced", command: "ersBalanced" },
-  { labelKey: "btn.ersCharge", command: "ersCharge" },
-  { labelKey: "btn.tireSoft", command: "tireSoft" },
-  { labelKey: "btn.tireMedium", command: "tireMedium" },
-  { labelKey: "btn.tireHard", command: "tireHard" },
-  { labelKey: "btn.lapStatus", command: "lapStatus" },
-  { labelKey: "btn.position", command: "position" },
-  { labelKey: "btn.tempStatus", command: "tempStatus" },
-  { labelKey: "btn.fuelStatus", command: "fuelStatus" },
-  { labelKey: "btn.batteryStatus", command: "batteryStatus" },
-  { labelKey: "btn.weatherStatus", command: "weatherStatus" },
-  { labelKey: "btn.bestLap", command: "bestLap" },
-  { labelKey: "btn.damageStatus", command: "damageStatus" },
-  { labelKey: "btn.weatherDry", command: "weatherDry" },
-  { labelKey: "btn.weatherCloudy", command: "weatherCloudy" },
-  { labelKey: "btn.weatherWet", command: "weatherWet" },
-  { labelKey: "btn.weatherStorm", command: "weatherStorm" },
-  { labelKey: "btn.aiEasy", command: "aiEasy" },
-  { labelKey: "btn.aiMedium", command: "aiMedium" },
-  { labelKey: "btn.aiHard", command: "aiHard" },
-  { labelKey: "btn.aiRandom", command: "aiRandom" },
-  { labelKey: "btn.aiOff", command: "aiOff" },
-  { labelKey: "btn.reset", command: "reset" },
-];
-
-/**
- * Run a resolved command key against the composable and update the UI.
- * Shared by both voice dispatch and the manual control buttons.
- */
 const runCommand = async (command) => {
   if (!command || !commandActions[command]) {
     return t("msg.notRecognized", { transcript: "" });
@@ -671,10 +432,8 @@ const runCommand = async (command) => {
   if (command === "overtake" && overtakeActive.value) {
     startOvertakeCountdown();
   }
-  // Track the last AI difficulty command so the active button stays highlighted.
   if (command.startsWith("ai") && command !== "aiStatus" && command !== "aiOff") {
     activeAiCommand.value = command;
-    // Auto-start the engine so the race begins immediately with the AI rival.
     if (!engineStatus.value) {
       startEngine().catch(() => {});
     }
@@ -683,9 +442,6 @@ const runCommand = async (command) => {
   return message;
 };
 
-/**
- * Start the visual countdown bar for the overtake boost.
- */
 const startOvertakeCountdown = () => {
   if (overtakeCountdownInterval) clearInterval(overtakeCountdownInterval);
   const start = Date.now();
@@ -704,13 +460,9 @@ const startOvertakeCountdown = () => {
   }, 100);
 };
 
-/**
- * Main command processor. Maps a voice transcript to a composable action.
- */
 const processCommand = async (transcript) => {
   lastTranscript.value = transcript;
 
-  // Stop listening immediately to prevent feedback loops
   speechService.stopListening();
   isListening.value = false;
 
@@ -719,11 +471,9 @@ const processCommand = async (transcript) => {
   if (command && commandActions[command]) {
     await runCommand(command);
   } else {
-    // #5: tell the user we heard them but didn't understand the command.
     statusMessage.value = t("msg.notRecognized", { transcript });
   }
 
-  // Restart the listening loop if not manually stopped
   setTimeout(() => {
     if (!speechService.isManuallyStopped()) {
       toggleListening(true);
@@ -731,9 +481,6 @@ const processCommand = async (transcript) => {
   }, 500);
 };
 
-/**
- * Toggles the master listening state.
- */
 const toggleListening = (forceStart = false) => {
   if (isListening.value && !forceStart) {
     speechService.stopListening();
@@ -752,9 +499,6 @@ const toggleListening = (forceStart = false) => {
   }
 };
 
-/**
- * Handles errors from the speech recognition service.
- */
 const handleError = (error) => {
   const errorCode =
     typeof error === "string"
@@ -780,20 +524,26 @@ const handleError = (error) => {
   isListening.value = false;
 };
 
-/**
- * Clean up when the component is removed from the page.
- */
 onUnmounted(() => {
   speechService.stopListening();
   if (overtakeCountdownInterval) clearInterval(overtakeCountdownInterval);
   if (gearFlashTimeout) clearTimeout(gearFlashTimeout);
 });
+
+if (import.meta.env.DEV) {
+  window.__simulateRaceEnd = () => {
+    raceFinished.value = true;
+    lapProgress.value = 0;
+    engineStatus.value = false;
+    rpm.value = 0;
+    currentGear.value = 0;
+    drsStatus.value = false;
+    overtakeActive.value = false;
+  };
+}
 </script>
 
 <style scoped>
-/* =============================================== */
-/* 1. Base Styles (Mobile-First)                   */
-/* =============================================== */
 .race-control-panel {
   font-family: "Orbitron", sans-serif;
   background-color: #1e1e1e;
@@ -1001,209 +751,6 @@ h1 {
   background-color: #ff851b;
 }
 
-.track-map {
-  margin-bottom: 1.5rem;
-  display: flex;
-  justify-content: center;
-  position: relative;
-}
-.track-svg {
-  width: 70%;
-  max-width: 280px;
-}
-.track-path {
-  fill: none;
-  stroke: #333;
-  stroke-width: 3;
-  stroke-linecap: round;
-}
-.track-marker {
-  transition:
-    cx 0.4s linear,
-    cy 0.4s linear;
-}
-.track-marker.player {
-  fill: #00ffff;
-  filter: drop-shadow(0 0 3px #00ffff);
-}
-.track-marker.rival {
-  fill: #ff851b;
-  filter: drop-shadow(0 0 3px #ff851b);
-}
-
-/* Segment boundary markers on the track map */
-.seg-boundary {
-  stroke-width: 0;
-}
-.seg-boundary.straight {
-  fill: #2ecc40;
-}
-.seg-boundary.corner.speed-slow {
-  fill: #ff4136;
-}
-.seg-boundary.corner.speed-medium {
-  fill: #ffdc00;
-}
-.seg-boundary.corner.speed-fast {
-  fill: #ff851b;
-}
-
-/* Start/finish line */
-.start-finish {
-  stroke: #fff;
-  stroke-width: 1.2;
-  stroke-dasharray: 2 2;
-  opacity: 0.7;
-}
-
-/* Track map legend */
-.map-legend {
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-.track-svg:hover .map-legend {
-  opacity: 0.8;
-}
-.legend-label {
-  fill: #ccc;
-  font-size: 2.5px;
-  font-family: "Orbitron", sans-serif;
-}
-.legend-dot {
-  stroke: none;
-}
-.legend-dot.dot-straight {
-  fill: #2ecc40;
-}
-.legend-dot.dot-corner-slow {
-  fill: #ff4136;
-}
-.legend-dot.dot-corner-medium {
-  fill: #ffdc00;
-}
-.legend-dot.dot-corner-fast {
-  fill: #ff851b;
-}
-
-.manual-controls {
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid #444;
-}
-.manual-controls h3 {
-  color: #aaa;
-  font-size: 0.9rem;
-  text-transform: uppercase;
-  text-align: center;
-  margin-bottom: 1rem;
-}
-.button-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 0.5rem;
-}
-.ctrl-button {
-  padding: 8px;
-  font-size: 0.8rem;
-  font-family: "Orbitron", sans-serif;
-  color: #e0e0e0;
-  background-color: #2a2a2a;
-  border: 1px solid #444;
-  border-radius: 6px;
-  cursor: pointer;
-  transition:
-    background-color 0.2s,
-    border-color 0.2s;
-}
-.ctrl-button:hover {
-  background-color: #333;
-  border-color: #00ffff;
-  color: #00ffff;
-}
-
-.gauge-container {
-  margin-bottom: 2rem;
-  display: flex;
-  justify-content: center;
-}
-.rpm-gauge {
-  width: 220px;
-  transform: rotateX(180deg);
-}
-.gauge-bg,
-.gauge-needle {
-  fill: none;
-  stroke-width: 10;
-  stroke-linecap: round;
-}
-.gauge-bg {
-  stroke: #333;
-}
-.gauge-needle {
-  stroke: #00ffff;
-  transition: stroke-dashoffset 0.8s cubic-bezier(0.6, 0, 0.2, 1);
-}
-.rpm-text,
-.rpm-label {
-  font-family: "Orbitron", sans-serif;
-  text-anchor: middle;
-  transform: rotateX(180deg);
-}
-.rpm-text {
-  fill: #fff;
-  font-size: 20px;
-  font-weight: bold;
-}
-.rpm-label {
-  fill: #888;
-  font-size: 8px;
-}
-
-.leaderboard {
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid #444;
-}
-.leaderboard h3 {
-  color: #aaa;
-  font-size: 0.9rem;
-  text-transform: uppercase;
-  text-align: center;
-  margin-bottom: 1rem;
-}
-.leaderboard ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.leaderboard li {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.4rem 0.6rem;
-  background-color: #2a2a2a;
-  border-radius: 6px;
-  margin-bottom: 0.4rem;
-  font-size: 0.9rem;
-}
-.leaderboard li:first-child {
-  border: 1px solid #00ffff;
-}
-.lb-rank {
-  color: #00ffff;
-  font-weight: bold;
-  width: 1.5rem;
-  text-align: center;
-}
-.lb-lap {
-  color: #aaa;
-  flex: 1;
-}
-.lb-time {
-  color: #ffdc00;
-  font-family: monospace;
-}
-
 .gear-display {
   grid-column: span 1;
 }
@@ -1269,7 +816,6 @@ h1 {
   50% { opacity: 0.3; }
 }
 
-/* AI rival tile: highlight when active */
 .display-item.ai-active {
   border: 1px solid #ff851b;
   border-radius: 8px;
@@ -1277,22 +823,6 @@ h1 {
   background: rgba(255, 133, 27, 0.08);
 }
 
-/* AI control button: highlight the active difficulty.
-   Only AI buttons can get the active-difficulty class via activeAiCommand tracking,
-   so no need for an AI-specific class selector here. */
-.ctrl-button.active-difficulty {
-  border-color: #ff851b;
-  background-color: rgba(255, 133, 27, 0.15);
-  color: #ff851b;
-}
-
-/* AI rival board: tinted to distinguish it from the player's own laps. */
-.ai-board li:first-child {
-  border-color: #ff851b;
-}
-.ai-board .lb-rank {
-  color: #ff851b;
-}
 .ai-sub {
   display: block;
   font-size: 0.7rem;
@@ -1315,9 +845,6 @@ h1 {
   border-radius: 4px;
 }
 
-/* =============================================== */
-/* 2. Tablet Styles                                */
-/* =============================================== */
 @media (min-width: 768px) {
   .race-control-panel {
     padding: 2rem;
@@ -1336,20 +863,11 @@ h1 {
   .dashboard {
     gap: 1.5rem;
   }
-  .rpm-gauge {
-    width: 250px;
-  }
 }
 
-/* =============================================== */
-/* 3. Desktop Styles                               */
-/* =============================================== */
 @media (min-width: 1024px) {
   .race-control-panel {
     max-width: 700px;
-  }
-  .rpm-gauge {
-    width: 300px;
   }
   .display-item .status {
     font-size: 1.8rem;

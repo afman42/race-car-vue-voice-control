@@ -5,13 +5,20 @@
 ```
 src/
 ├── config.js                        # All tunable constants (physics, AI, compounds, etc.)
-├── i18n.js                          # Internationalization engine + all message dictionaries
+├── i18n.js                          # Internationalization engine (locale detection + t())
 ├── main.js                          # Vue app bootstrap
 ├── App.vue                          # Root component (applies global font & dark theme)
 │
 ├── components/
-│   ├── RaceControl.vue              # Main UI: dashboard, track map, controls, command dispatch
-│   └── RaceControl.spec.js          # Component integration tests (15 tests)
+│   ├── RaceControl.vue              # Main UI: dashboard, controls, command dispatch
+│   ├── TrackMap.vue                 # SVG track map with player/rival markers + segment boundaries
+│   ├── RpmGauge.vue                 # RPM gauge with needle animation
+│   ├── Leaderboard.vue              # Fastest laps board (player + AI, reused)
+│   ├── ManualControls.vue           # On-screen button grid (keyboard fallback)
+│   └── RaceControl.spec.js          # Component integration tests (25 tests)
+│
+├── commands/
+│   └── matchers.js                  # Voice command keyword matchers (en + id), ordered
 │
 ├── composables/                     # Vue 3 composables (reactive state + logic)
 │   ├── useCar.js                    # Core singleton: car state, simulation, all public actions
@@ -25,6 +32,10 @@ src/
 │   ├── useCarStandings.spec.js      # Race standings & track position tests
 │   └── commandRouter.spec.js        # Command matching & fuzzy tests
 │
+├── locales/
+│   ├── en.js                        # English message dictionary (UI + spoken + errors)
+│   └── id.js                        # Indonesian message dictionary
+│
 ├── utils/
 │   ├── formatLapTime.js             # Lap time formatter: M:SS.mmm
 │   ├── formatLapTime.spec.js        # Formatter unit tests
@@ -33,13 +44,13 @@ src/
 │
 └── services/                        # Browser API wrappers
     ├── audioService.js              # Preload + play sound effects (graceful on failure)
-    ├── speechRecognitionService.js  # Web Speech API recognition wrapper (auto-restart)
-    ├── textToSpeechService.js       # Web Speech API synthesis wrapper (voice matching)
-    └── engineAudioService.js        # Synthesized engine pitch via Web Audio API
+    ├── speechRecognitionService.js  # Web Speech API recognition wrapper (auto-restart, fatal-error guard)
+    ├── textToSpeechService.js       # Web Speech API synthesis wrapper (voice matching, voiceschanged cache)
+    └── engineAudioService.js        # Synthesized engine pitch via Web Audio API (node disconnect on stop)
 
 e2e/                                 # Playwright end-to-end tests
 ├── race-control.spec.js             # 28 tests: dashboard, engine, AI, DRS, etc.
-└── race-app.spec.js                 # 38 tests: comprehensive app behavior
+└── race-app.spec.js                 # 39 tests: comprehensive app behavior
 ```
 
 ---
@@ -56,9 +67,9 @@ The AI rival (`useAiRival.js`) is modeled as a **lap-time generator**, not a ful
 
 ### Two-Pass Command Matching
 
-The `commandRouter.js` module resolves voice transcripts to command keys:
+The `commandRouter.js` module resolves voice transcripts to command keys. Keyword matchers are defined in `commands/matchers.js` (ordered — specific multi-word commands before broad single-word ones):
 
-1. **Pass 1 — Exact substring match** (fast, precise): checks if any known keyword is a substring of the transcript
+1. **Pass 1 — Word-boundary match** (fast, precise): checks if any known keyword appears at a word boundary in the transcript (prevents "collapse" matching "lap" while still allowing "raining" to match "rain")
 2. **Pass 2 — Fuzzy match** (tolerant): splits the transcript into word tokens, then checks each keyword phrase using per-word Levenshtein edit distance
 
 Short keywords (< 4 chars) require exact matches to prevent false positives (e.g. "t" matching "tire").
@@ -77,7 +88,7 @@ Each critical threshold (fuel, battery, temperature, damage) triggers exactly **
 
 ### Auto-Restarting Speech Recognition
 
-After each successful command, the speech recognition service automatically restarts after a 500ms delay. Manually clicking "Stop Radio" / "Hentikan Radio" sets a flag that prevents auto-restart.
+After each successful command, the speech recognition service automatically restarts after a 500ms delay. Manually clicking "Stop Radio" / "Hentikan Radio" sets a flag that prevents auto-restart. Fatal errors (`not-allowed`, `service-not-allowed`, `audio-capture`) also suppress auto-restart to avoid infinite retry loops when the microphone is denied.
 
 ---
 
@@ -105,17 +116,18 @@ Dashboard updates reactively via Vue computed properties
 ## Simulation Loop
 
 ```
-Engine ON or AI enabled
+Engine ON or AI enabled (and not pitting)
     ↓
-2-second tick interval (setInterval)
+250ms tick interval (setInterval)
     ↓
 runSimulationTick():
+    ├── Skip if pitting (pit stop freezes all systems)
     ├── Fuel consumption (RPM × mix rate)
     ├── Tire wear (RPM × compound × weather)
     ├── Battery recharge (ERS mode)
     ├── Engine temperature (RPM + overtake - cooling)
     ├── Damage accrual (overheat + worn tires)
-    ├── Lap progress (RPM × gear × grip × pace)
+    ├── Lap progress (RPM × gear × grip × pace × DRS boost on straights)
     ├── AI rival tick
     ├── Warning checks (fuel, battery, temp, damage)
     ├── RPM climb (+1000/tick)
@@ -143,11 +155,12 @@ runSimulationTick():
 ### `speechRecognitionService.js`
 - Wraps `window.SpeechRecognition` / `webkitSpeechRecognition`
 - Supports dynamic language switching via `setLanguage()`
-- **Auto-restart**: if the recognition service ends without manual stoppage, it restarts after 100ms
+- **Auto-restart**: if the recognition service ends without manual stoppage, it restarts after 100ms — unless the last error was fatal (`not-allowed`, `service-not-allowed`, `audio-capture`), which suppresses restart to avoid infinite loops
 - Handles errors: mic denied, not supported, no speech, network
 
 ### `textToSpeechService.js`
 - Wraps `window.speechSynthesis`
+- Caches the voice list and refreshes on the `voiceschanged` event (Chrome populates `getVoices()` asynchronously)
 - Picks a voice matching the current language (prefers exact BCP-47 match)
 - Cancels any in-progress speech before starting new utterances
 - **Never rejects** — errors are logged as warnings and resolved silently
