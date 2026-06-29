@@ -40,8 +40,8 @@ export const CAR_SETTINGS = {
   TOTAL_LAPS: 10,
   // Base distance covered per tick at full pace (decoupled from LAP_DISTANCE
   // so changing the lap length doesn't change the speed formula).
-  // Tuned so a player lap takes ~80 ticks (~20s at 250ms/tick), matching AI HARD.
-  LAP_PROGRESS_BASE: 8,
+  // Tuned so a player lap takes ~78 ticks (~19.5s at 250ms/tick).
+  LAP_PROGRESS_BASE: 9,
 
   // Engine temperature (degrees C). Rises with RPM/overtake, cools toward
   // ambient otherwise. Above the critical threshold the engine cuts power.
@@ -69,8 +69,8 @@ export const CAR_SETTINGS = {
 
   // AI rival: the reference lap time (ms) a perfect rival targets. Difficulty
   // scales this by paceFactor (higher = faster) and adds random variance.
-  // ponytail: scaled to match player lap time (~80 ticks × 400ms = 32s).
-  AI_BASE_LAP_MS: 32000,
+  // Tuned so HARD matches the player (~78 ticks), MEDIUM is beatable, EASY is comfortable.
+  AI_BASE_LAP_MS: 31200,
 
   // Gear simulation: when the car is moving, RPM climbs each tick and
   // automatically upshifts when it hits the shift point, dropping RPM to
