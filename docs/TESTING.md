@@ -7,7 +7,7 @@ The project runs two test suites: **unit tests** (Vitest) and **end-to-end tests
 ## Quick Commands
 
 ```bash
-pnpm test:run         # Unit tests (Vitest, single run) — 164 tests
+pnpm test:run         # Unit tests (Vitest, single run) — 184 tests
 pnpm test             # Unit tests in watch mode
 pnpm test:ui          # Vitest UI dashboard
 pnpm test:e2e         # E2E tests (Playwright) — 67 tests total
@@ -18,7 +18,7 @@ pnpm test:e2e:ui      # Playwright UI mode (interactive debug)
 
 ---
 
-## Unit Tests — Vitest (164 tests across 10 files)
+## Unit Tests — Vitest (184 tests across 11 files)
 
 ### Core Composable Tests
 

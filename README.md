@@ -95,7 +95,7 @@ e2e/
 |---|---|
 | **Framework** | Vue 3 (Composition API + `<script setup>`) |
 | **Build** | Vite 7 with Vue plugin + basic SSL |
-| **Testing (unit)** | Vitest + jsdom + @vue/test-utils |
+| **Testing (unit)** | Vitest + jsdom + @vue/test-utils (184 tests across 11 files) |
 | **Testing (e2e)** | Playwright (Chromium) |
 | **Speech** | Web Speech API (recognition + synthesis) |
 | **Package Manager** | pnpm |

@@ -11,8 +11,8 @@ The car simulation runs on a **250ms tick interval** (`CAR_SETTINGS.SIMULATION_T
 | **Fuel** | Consumed based on RPM × fuel mix multiplier | Lean 0.08, Standard 0.2, Rich 0.48 per tick |
 | **Tires** | Degrade from 100% → Worn; wear scales with RPM, compound, and weather | Base rate 0.6%/tick; Soft 1.6×, Medium 1.0×, Hard 0.6× |
 | **Battery** | Recharges based on ERS mode | Base 0.08%/tick; Hotlap 0.3×, Balanced 1.0×, Charge 2.0× |
-| **Engine Temp** | Rises with RPM + overtaking, cools toward 90°C ambient | Rise 4°C/tick, Cool 3°C/tick, Overtake +4°C/tick |
-| **Damage** | +4/tick while overheating, +2/tick on destroyed tires | Repaired only in pits; max 40% pace penalty at 100 damage |
+| **Engine Temp** | Rises with RPM + overtaking, cools toward 90°C ambient | Rise 3°C/tick, Cool 4°C/tick, Overtake +4°C/tick |
+| **Damage** | +3/tick while overheating, +2/tick on destroyed tires | Repaired only in pits; max 40% pace penalty at 100 damage |
 | **Gears** | RPM climbs 1000/tick; auto-upshift at 7500 RPM drops to 5000 RPM. Track-aware: upshifts on straights, downshifts into corners (2 gears/tick) | 7 gears with speed multipliers from 0.45× (1st) to 1.55× (7th). Corner targets: slow=2nd, medium=3rd, fast=4th |
 | **Lap Progress** | Distance accrues proportional to LAP_PROGRESS_BASE × RPM ratio × gear ratio × grip × pace × cornerFactor × DRS boost (straights only) | 600 distance units per lap (~78 ticks, ~19.5s); 10 laps total. Corners capped at 55% speed. DRS grants +12% pace on straights |
 | **Lap Timing** | +400ms simulated time per tick | Top 5 fastest laps kept on leaderboard. A full 10-lap race takes ~3.3 minutes |
@@ -54,7 +54,7 @@ The car simulation runs on a **250ms tick interval** (`CAR_SETTINGS.SIMULATION_T
 | Scenario | Behaviour |
 |---|---|
 | **Engine stall** (fuel = 0) | RPM drops to 0, gear to neutral, DRS & overtake disabled. Engine must be restarted after a pit stop refuel. |
-| **Overheat power cut** (temp ≥ 130°C) | RPM drops to idle, gear to neutral, DRS & overtake disabled. Recovers when temp drops below critical. |
+| **Overheat power cut** (temp ≥ 140°C) | RPM drops to idle, gear to neutral, DRS & overtake disabled. Recovers when temp drops below 120°C (optimal max). |
 | **Engine start** | Gear engages 1st at 4000 RPM (race-ready). RPM climbs 1000/tick toward the 7500 shift point. |
 | **Auto-upshift (straight)** | When RPM ≥ 7500 and gear < target (7 on straights), shifts up and drops RPM to 5000. |
 | **Auto-downshift (corner)** | When gear > corner target (2nd/3rd/4th), drops 2 gears/tick toward target. |
@@ -99,10 +99,10 @@ All tunable constants live in [`src/config.js`](../src/config.js).
   TOTAL_LAPS: 10,
   LAP_PROGRESS_BASE: 9,
   TEMP_AMBIENT: 90,
-  TEMP_OPTIMAL_MAX: 110,
-  TEMP_CRITICAL: 130,
-  TEMP_RISE_RATE: 4,
-  TEMP_COOL_RATE: 3,
+  TEMP_OPTIMAL_MAX: 120,
+  TEMP_CRITICAL: 140,
+  TEMP_RISE_RATE: 3,   // max degrees gained per tick at full RPM
+  TEMP_COOL_RATE: 4,   // degrees shed per tick toward ambient
   TEMP_OVERTAKE_PENALTY: 4,
   LAP_TIME_PER_TICK_MS: 400,
   LEADERBOARD_SIZE: 5,
