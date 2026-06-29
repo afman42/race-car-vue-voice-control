@@ -3,6 +3,7 @@
 import { ref, computed, watch, onUnmounted, getCurrentInstance } from "vue";
 import {
   CAR_SETTINGS,
+  CAR_PRESETS,
   FUEL_MIXES,
   TIRE_COMPOUNDS,
   ERS_MODES,
@@ -72,6 +73,26 @@ const leaderboard = ref([]);
 // --- WEATHER + DAMAGE ---
 const weather = ref(WEATHER_CONDITIONS.DRY.label);
 const carDamage = ref(0); // 0..100
+
+// --- SELECTED CAR ---
+// The chosen preset modifies the player's base stats via multipliers.
+const selectedCar = ref(CAR_PRESETS[1]); // default: Balanced
+
+// Effective stats after applying the selected car's multipliers.
+const effectiveStats = computed(() => {
+  const s = selectedCar.value.stats;
+  return {
+    lapProgressBase: CAR_SETTINGS.LAP_PROGRESS_BASE * s.speedMul,
+    cornerSpeedCap: Math.min(1, CAR_SETTINGS.CORNER_SPEED_CAP * s.gripMul),
+    tireWearRate: CAR_SETTINGS.TIRE_WEAR_RATE * s.wearMul,
+    fuelRate: {
+      LEAN: CAR_SETTINGS.FUEL_CONSUMPTION_RATE.LEAN * s.fuelMul,
+      STANDARD: CAR_SETTINGS.FUEL_CONSUMPTION_RATE.STANDARD * s.fuelMul,
+      RICH: CAR_SETTINGS.FUEL_CONSUMPTION_RATE.RICH * s.fuelMul,
+    },
+    gearRpmClimb: CAR_SETTINGS.GEAR_RPM_CLIMB * s.tempoMul,
+  };
+});
 
 // --- AI RIVAL ---
 // The rival lives in its own composable (useAiRival). It is modeled as a
@@ -146,6 +167,7 @@ export function _resetSingletons() {
   leaderboard.value = [];
   weather.value = WEATHER_CONDITIONS.DRY.label;
   carDamage.value = 0;
+  selectedCar.value = CAR_PRESETS[1];
   lowFuelWarned.value = false;
   lowBatteryWarned.value = false;
   overheatWarned.value = false;
@@ -201,7 +223,7 @@ export function useCar() {
       ? (CAR_SETTINGS.GEAR_RATIOS[currentGear.value] || 0.5)
       : 0;
     const seg = findSegmentAtProgress(lapProgress.value);
-    const cf = seg.segment.type === "corner" ? CAR_SETTINGS.CORNER_SPEED_CAP : 1.0;
+    const cf = seg.segment.type === "corner" ? effectiveStats.value.cornerSpeedCap : 1.0;
     // DRS grants a straight-line speed boost (only on straights, per F1 rules).
     const drsBoost = drsStatus.value && seg.segment.type === "straight" ? 1.12 : 1.0;
     const base = 50 + ratio * gr * 200;
@@ -353,7 +375,7 @@ export function useCar() {
       ? (CAR_SETTINGS.GEAR_RATIOS[currentGear.value] || 0.5)
       : 0;
     const rawSpeed =
-      CAR_SETTINGS.LAP_PROGRESS_BASE *
+      effectiveStats.value.lapProgressBase *
       (0.3 + ratio * gearRatio) *
       weatherConfig().gripFactor *
       paceFactor.value;
@@ -362,7 +384,7 @@ export function useCar() {
     const startSeg = findSegmentAtProgress(lapProgress.value);
     const startCornerFactor =
       startSeg.segment.type === "corner"
-        ? CAR_SETTINGS.CORNER_SPEED_CAP
+        ? effectiveStats.value.cornerSpeedCap
         : 1.0;
 
     // DRS boosts pace on straights (real F1: DRS is disabled in corners).
@@ -380,8 +402,8 @@ export function useCar() {
     if (endSeg.index !== startSeg.index) {
       const endCornerFactor =
         endSeg.segment.type === "corner"
-          ? CAR_SETTINGS.CORNER_SPEED_CAP
-          : 1.0;
+        ? effectiveStats.value.cornerSpeedCap
+        : 1.0;
       lapProgress.value = beforeProgress + rawSpeed * endCornerFactor;
     }
 
@@ -460,8 +482,8 @@ export function useCar() {
 
     // Fuel consumption scales with the selected fuel mix and current RPM.
     const baseConsumptionRate =
-      CAR_SETTINGS.FUEL_CONSUMPTION_RATE[fuelMix.value.toUpperCase()] ||
-      CAR_SETTINGS.FUEL_CONSUMPTION_RATE.STANDARD;
+      effectiveStats.value.fuelRate[fuelMix.value.toUpperCase()] ||
+      effectiveStats.value.fuelRate.STANDARD;
 
     // Multiplier ranges linearly from MIN (idle) to MAX (max RPM).
     const rpmMultiplier =
@@ -479,7 +501,7 @@ export function useCar() {
     // scaled by the fitted compound's wear factor and the current weather.
     if (tireLife.value > 0) {
       const wear =
-        CAR_SETTINGS.TIRE_WEAR_RATE *
+        effectiveStats.value.tireWearRate *
         (1 + ratio) *
         compoundConfig().wearFactor *
         weatherConfig().wearFactor;
@@ -510,7 +532,7 @@ export function useCar() {
     if (engineStatus.value && !overheating.value) {
       rpm.value = Math.min(
         CAR_SETTINGS.RPM_MAX,
-        rpm.value + CAR_SETTINGS.GEAR_RPM_CLIMB,
+        rpm.value + effectiveStats.value.gearRpmClimb,
       );
     }
 
@@ -915,6 +937,7 @@ export function useCar() {
     leaderboard.value = [];
     weather.value = WEATHER_CONDITIONS.DRY.label;
     carDamage.value = 0;
+    selectedCar.value = CAR_PRESETS[1]; // Balanced
     damageWarned.value = false;
 
     // Reset the segment tracker for the start/finish straight.
@@ -926,6 +949,25 @@ export function useCar() {
     ai.resetProgress();
 
     const message = t("msg.raceReset");
+    await ttsService.speak(message);
+    return message;
+  };
+
+  // Select a preset car. Only allowed while the engine is off (pre-race).
+  const selectCar = async (carId) => {
+    if (engineStatus.value) {
+      const message = t("msg.carSelectEngineRunning");
+      await ttsService.speak(message);
+      return message;
+    }
+    const car = CAR_PRESETS.find((c) => c.id === carId);
+    if (!car) {
+      const message = t("msg.carSelectUnknown", { id: carId });
+      await ttsService.speak(message);
+      return message;
+    }
+    selectedCar.value = car;
+    const message = t("msg.carSelected", { label: car.label });
     await ttsService.speak(message);
     return message;
   };
@@ -998,6 +1040,7 @@ export function useCar() {
     leaderboard,
     weather,
     carDamage,
+    selectedCar,
     // AI rival state (re-exposed from useAiRival under the public names).
     aiEnabled: ai.enabled,
     aiDifficulty: ai.difficulty,
@@ -1043,6 +1086,7 @@ export function useCar() {
     getPosition,
     performPitStop,
     resetRace,
+    selectCar,
     // Helpers
     formatLapTime,
     // Internals exposed for testing

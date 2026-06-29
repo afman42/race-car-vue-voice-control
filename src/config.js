@@ -103,6 +103,45 @@ export const CAR_SETTINGS = {
   CORNER_TARGET_GEARS: { slow: 2, medium: 3, fast: 4 },
 };
 
+// Preset cars the player can choose before a race. Each car modifies the
+// player's base simulation stats via multipliers (1.0 = default).
+//   speedMul  — scales LAP_PROGRESS_BASE (higher = faster straights)
+//   gripMul   — scales CORNER_SPEED_CAP (higher = faster corners)
+//   wearMul   — scales TIRE_WEAR_RATE (higher = tires degrade faster)
+//   fuelMul   — scales FUEL_CONSUMPTION_RATE (higher = thirstier)
+//   tempoMul  — scales GEAR_RPM_CLIMB (higher = revs climb faster)
+// Requirements describe what the car trades off for its strengths.
+export const CAR_PRESETS = [
+  {
+    id: "speedster",
+    label: "Speedster",
+    stats: { speedMul: 1.15, gripMul: 0.90, wearMul: 1.30, fuelMul: 1.25, tempoMul: 1.10 },
+    desc: "Top speed monster. Eats tires and fuel.",
+    markerColor: "#00ffff",
+  },
+  {
+    id: "balanced",
+    label: "Balanced",
+    stats: { speedMul: 1.00, gripMul: 1.00, wearMul: 1.00, fuelMul: 1.00, tempoMul: 1.00 },
+    desc: "All-round performer. No weaknesses.",
+    markerColor: "#2ecc40",
+  },
+  {
+    id: "gripmaster",
+    label: "Grip Master",
+    stats: { speedMul: 0.90, gripMul: 1.20, wearMul: 0.85, fuelMul: 0.90, tempoMul: 0.95 },
+    desc: "Cornering ace. Slow on straights, gentle on tires.",
+    markerColor: "#ffdc00",
+  },
+  {
+    id: "endurance",
+    label: "Endurance",
+    stats: { speedMul: 0.85, gripMul: 1.05, wearMul: 0.60, fuelMul: 0.70, tempoMul: 0.90 },
+    desc: "Marathon runner. Sips fuel, saves tires. Low top speed.",
+    markerColor: "#ff851b",
+  },
+];
+
 // AI rival difficulty. paceFactor scales the rival's lap pace (1.0 = reference,
 // lower = slower laps); variance is the fractional random swing applied to each
 // lap (0.12 => +/-12%), so easier rivals are both slower and less consistent.

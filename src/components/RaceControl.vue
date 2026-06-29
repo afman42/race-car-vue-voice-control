@@ -39,6 +39,21 @@
       {{ isListening ? t("ui.stopRadio") : t("ui.openRadio") }}
     </button>
 
+    <button
+      @click="showCarModal = true"
+      class="car-select-button"
+      :disabled="engineStatus"
+    >
+      {{ selectedCar.label }} ▸ {{ t("ui.selectCar") }}
+    </button>
+
+    <CarSelectModal
+      :show="showCarModal"
+      :selected-id="selectedCar.id"
+      @select="onCarSelect"
+      @close="showCarModal = false"
+    />
+
     <div class="lap-banner" role="status" aria-live="polite">
       <span v-if="raceFinished">{{ t("ui.raceComplete") }}</span>
       <span v-else>{{
@@ -249,6 +264,7 @@ import TrackMap from "./TrackMap.vue";
 import RpmGauge from "./RpmGauge.vue";
 import Leaderboard from "./Leaderboard.vue";
 import ManualControls from "./ManualControls.vue";
+import CarSelectModal from "./CarSelectModal.vue";
 
 const {
   engineStatus,
@@ -309,6 +325,8 @@ const {
   getPosition,
   performPitStop,
   resetRace,
+  selectCar,
+  selectedCar,
   formatLapTime,
 } = useCar();
 
@@ -330,6 +348,13 @@ const onLocaleChange = (event) => {
 const isListening = ref(false);
 const statusMessage = ref(t("ui.openRadio"));
 const lastTranscript = ref("...");
+const showCarModal = ref(false);
+
+const onCarSelect = async (carId) => {
+  const message = await selectCar(carId);
+  statusMessage.value = message;
+  showCarModal.value = false;
+};
 
 watch(locale, () => {
   if (!isListening.value) {
@@ -639,6 +664,29 @@ h1 {
   transition:
     background-color 0.3s,
     box-shadow 0.3s;
+}
+
+.car-select-button {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  font-size: 0.9rem;
+  font-family: "Orbitron", sans-serif;
+  color: #00ffff;
+  background-color: #2a2a2a;
+  border: 1px solid #00ffff;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 1.5rem;
+  transition: background-color 0.2s, opacity 0.2s;
+}
+.car-select-button:hover:not(:disabled) {
+  background-color: #333;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+}
+.car-select-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .dashboard {

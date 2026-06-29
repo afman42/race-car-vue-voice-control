@@ -30,6 +30,7 @@ pnpm test:e2e         # Run end-to-end tests (Playwright)
 | **🌦️ Weather System** | Dry, Cloudy, Wet, or Storm — each affects grip, tire wear, and engine cooling |
 | **🔧 Pit Stops** | Refuel, recharge, cool the engine, repair damage, and fit new tires |
 | **⚙️ Simulation** | Gears, RPM, fuel consumption, tire degradation, ERS modes, engine temperature, damage |
+| **🏎️ Car Selection** | 4 preset cars (Speedster, Balanced, Grip Master, Endurance) — each changes speed, grip, tire wear, fuel use, tempo |
 | **📊 Live Dashboard** | RPM gauge, track map, position badge, shift lights, segment display |
 | **🌐 Bilingual** | Full English and Indonesian localization for UI, voice responses, and commands |
 | **⚠️ Radio Warnings** | Automatic voice alerts for critical fuel, battery, overheating, and damage |
@@ -61,7 +62,8 @@ src/
 │   ├── TrackMap.vue       # SVG track map with player/rival markers
 │   ├── RpmGauge.vue       # RPM gauge with needle + shift lights
 │   ├── Leaderboard.vue    # Fastest laps board (player + AI)
-│   └── ManualControls.vue # On-screen button grid (keyboard fallback)
+│   ├── ManualControls.vue # On-screen button grid (keyboard fallback)
+│   └── CarSelectModal.vue # Pre-race car selection modal (4 presets)
 ├── commands/
 │   └── matchers.js        # Voice command keyword matchers (en + id)
 ├── composables/
