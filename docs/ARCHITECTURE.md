@@ -10,22 +10,25 @@ src/
 ├── App.vue                          # Root component (applies global font & dark theme)
 │
 ├── components/
-│   ├── RaceControl.vue              # Main UI: dashboard, controls, command dispatch
+│   ├── RaceControl.vue              # Main UI: dashboard, controls (template + styles only)
 │   ├── TrackMap.vue                 # SVG track map with player/rival markers + segment boundaries
 │   ├── RpmGauge.vue                 # RPM gauge with needle animation
 │   ├── Leaderboard.vue              # Fastest laps board (player + AI, reused)
 │   ├── ManualControls.vue           # On-screen button grid (keyboard fallback)
-│   └── RaceControl.spec.js          # Component integration tests (25 tests)
+│   └── CarSelectModal.vue           # Pre-race car selection modal (4 presets)
 │
 ├── commands/
 │   └── matchers.js                  # Voice command keyword matchers (en + id), ordered
 │
 ├── composables/                     # Vue 3 composables (reactive state + logic)
-│   ├── useCar.js                    # Core singleton: car state, simulation, all public actions
+│   ├── useCarState.js               # Module-scoped singleton state refs + computed properties
+│   ├── useCarSimulation.js           # Core simulation tick, autoShift, stall/overheat
+│   ├── useCar.js                    # Slim orchestrator: imports state + sim, exposes public API
 │   ├── useAiRival.js                # AI rival singleton: lap-time generator
+│   ├── useRaceControl.js            # UI orchestration: command routing, speech, overtake countdown
 │   ├── commandRouter.js             # Voice transcript → command key (exact + fuzzy matching)
-│   ├── useCar.spec.js               # Engine, DRS, overtake, pit stop tests
-│   ├── useCarSimulation.spec.js     # Simulation tick tests (fuel, tires, stall)
+│   ├── useCar.spec.js               # Engine, DRS, overtake, pit stop, car selection tests
+│   ├── useCarSimulation.spec.js     # Simulation tick + autoShift edge case tests
 │   ├── useCarFeatures.spec.js       # Compound, ERS, temperature, lap, help tests
 │   ├── useCarRaceFeatures.spec.js   # Lap timing, leaderboard, weather, damage tests
 │   ├── useCarAiRival.spec.js        # AI difficulty, lap generation, board tests

@@ -58,7 +58,7 @@ src/
 ├── main.js                # App bootstrap
 ├── App.vue                # Root component (global font & dark theme)
 ├── components/
-│   ├── RaceControl.vue    # Main UI: dashboard, controls, command dispatch
+│   ├── RaceControl.vue    # Main UI: dashboard, controls (template + styles)
 │   ├── TrackMap.vue       # SVG track map with player/rival markers
 │   ├── RpmGauge.vue       # RPM gauge with needle + shift lights
 │   ├── Leaderboard.vue    # Fastest laps board (player + AI)
@@ -67,7 +67,10 @@ src/
 ├── commands/
 │   └── matchers.js        # Voice command keyword matchers (en + id)
 ├── composables/
-│   ├── useCar.js          # Core singleton: car state, simulation, actions
+│   ├── useCarState.js     # Shared singleton state refs + computed properties
+│   ├── useCarSimulation.js# Simulation tick, autoShift, stall/overheat
+│   ├── useCar.js          # Slim orchestrator: imports state + sim, exposes API
+│   ├── useRaceControl.js  # UI orchestration: command routing, speech, overtake countdown
 │   ├── useAiRival.js      # AI rival singleton: lap-time generator
 │   └── commandRouter.js   # Voice transcript → command key (exact + fuzzy)
 ├── locales/
@@ -95,7 +98,7 @@ e2e/
 |---|---|
 | **Framework** | Vue 3 (Composition API + `<script setup>`) |
 | **Build** | Vite 7 with Vue plugin + basic SSL |
-| **Testing (unit)** | Vitest + jsdom + @vue/test-utils (184 tests across 11 files) |
+| **Testing (unit)** | Vitest + jsdom + @vue/test-utils (204 tests across 11 files) |
 | **Testing (e2e)** | Playwright (Chromium) |
 | **Speech** | Web Speech API (recognition + synthesis) |
 | **Package Manager** | pnpm |

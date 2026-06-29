@@ -7,7 +7,7 @@ The project runs two test suites: **unit tests** (Vitest) and **end-to-end tests
 ## Quick Commands
 
 ```bash
-pnpm test:run         # Unit tests (Vitest, single run) — 184 tests
+pnpm test:run         # Unit tests (Vitest, single run) — 204 tests
 pnpm test             # Unit tests in watch mode
 pnpm test:ui          # Vitest UI dashboard
 pnpm test:e2e         # E2E tests (Playwright) — 67 tests total
@@ -18,15 +18,15 @@ pnpm test:e2e:ui      # Playwright UI mode (interactive debug)
 
 ---
 
-## Unit Tests — Vitest (184 tests across 11 files)
+## Unit Tests — Vitest (204 tests across 11 files)
 
 ### Core Composable Tests
 
 | Test File | Tests | What It Covers |
 |---|---|---|
-| `useCar.spec.js` | 18 | Engine start/stop, DRS toggle, overtake activation, fuel mix switching, pit stop — including edge cases like overtake with engine off |
+| `useCar.spec.js` | 22 | Engine start/stop, DRS toggle, overtake activation (incl. already-active guard), fuel mix switching, pit stop (incl. race-finished guard), car selection edge cases |
 | `useCarFeatures.spec.js` | 16 | Tire compound changes (pit-only enforcement), ERS mode switching, engine temperature, lap timer, help command, race reset |
-| `useCarSimulation.spec.js` | 9 | Fuel consumption at different RPMs, battery recharge (including cap at 100%), tire wear, engine stall, warning latches, post-race behavior |
+| `useCarSimulation.spec.js` | 20 | Fuel consumption at different RPMs, battery recharge, tire wear, engine stall, autoShift edge cases (neutral, safety downshift, corner downshift, below-shift threshold), overheat recovery, pitting guard, fuel/tire floor |
 | `useCarRaceFeatures.spec.js` | 22 | Lap timing and completion, fastest-lap leaderboard (sorting, capping), weather effects on grip and wear, damage accrual and pace penalty |
 | `useCarAiRival.spec.js` | 15 | AI difficulty levels, lap generation, leaderboard sorting/capping, status query (with and without laps), disable, reset |
 | `useCarStandings.spec.js` | 7 | Race standings computation, position callout, track-loop position, solo vs. rival scenarios |
@@ -43,7 +43,7 @@ pnpm test:e2e:ui      # Playwright UI mode (interactive debug)
 | Test File | Tests | What It Covers |
 |---|---|---|
 | `commandRouter.spec.js` | 33 | Exact keyword matching, false-positive rejection (short strings), locale-specific matching, fuzzy (Levenshtein) matching with tolerance |
-| `RaceControl.spec.js` | 25 | Dashboard render, radio toggle, voice/manual command execution, AI controls (enable/disable), race standings display, track segments, unmount cleanup |
+| `RaceControl.spec.js` | 30 | Dashboard render, radio toggle, voice/manual command execution, AI controls, race standings, track segments, gear flash animation, segment wrapping, runCommand edge cases (null/undefined), unmount cleanup |
 
 ---
 
