@@ -123,6 +123,14 @@ export default {
   },
 
   /**
+   * Reset the manually-stopped flag so auto-restart can resume.
+   * Used after a transient stop (e.g. pausing during command processing).
+   */
+  resetManualStop() {
+    isManuallyStopped = false;
+  },
+
+  /**
    * Whether listening was last stopped by the user (vs. still active).
    * @returns {boolean}
    */

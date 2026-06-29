@@ -86,15 +86,15 @@ export const CAR_SETTINGS = {
 
   // Track layout: segments that make up each lap, defining where the car
   // upshifts (straights) and downshifts (corners). Lengths must sum to
-  // LAP_DISTANCE (100) for clean lap wrapping.
+  // LAP_DISTANCE (600) for clean lap wrapping.
   TRACK_LAYOUT: [
-    { type: "straight", length: 25 },
-    { type: "corner", length: 8, speed: "slow" },
-    { type: "straight", length: 12 },
-    { type: "corner", length: 10, speed: "medium" },
-    { type: "straight", length: 15 },
-    { type: "corner", length: 10, speed: "fast" },
-    { type: "straight", length: 20 },
+    { type: "straight", length: 150 },
+    { type: "corner", length: 48, speed: "slow" },
+    { type: "straight", length: 72 },
+    { type: "corner", length: 60, speed: "medium" },
+    { type: "straight", length: 90 },
+    { type: "corner", length: 60, speed: "fast" },
+    { type: "straight", length: 120 },
   ],
   // Speed multiplier applied when cornering (capped progress per tick).
   // This simulates the loss of pace through turns even in the correct gear.

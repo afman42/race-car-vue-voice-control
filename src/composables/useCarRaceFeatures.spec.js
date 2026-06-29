@@ -38,7 +38,7 @@ describe("useCar - lap timing + leaderboard", () => {
     engineStatus.value = true;
     rpm.value = CAR_SETTINGS.RPM_MAX;
 
-    for (let i = 0; i < 150 && leaderboard.value.length === 0; i++) {
+    for (let i = 0; i < 200 && leaderboard.value.length === 0; i++) {
       runSimulationTick();
     }
 

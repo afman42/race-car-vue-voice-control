@@ -122,15 +122,15 @@ All tunable constants live in [`src/config.js`](../src/config.js).
   GEAR_RPM_CLIMB: 1000,
   GEAR_START_RPM: 4000,
 
-  // Track layout (7 segments, lengths sum to 100)
+  // Track layout (7 segments, lengths sum to 600)
   TRACK_LAYOUT: [
-    { type: "straight", length: 25 },
-    { type: "corner", length: 8, speed: "slow" },
-    { type: "straight", length: 12 },
-    { type: "corner", length: 10, speed: "medium" },
-    { type: "straight", length: 15 },
-    { type: "corner", length: 10, speed: "fast" },
-    { type: "straight", length: 20 },
+    { type: "straight", length: 150 },
+    { type: "corner", length: 48, speed: "slow" },
+    { type: "straight", length: 72 },
+    { type: "corner", length: 60, speed: "medium" },
+    { type: "straight", length: 90 },
+    { type: "corner", length: 60, speed: "fast" },
+    { type: "straight", length: 120 },
   ],
   CORNER_SPEED_CAP: 0.55,
   CORNER_TARGET_GEARS: { slow: 2, medium: 3, fast: 4 },

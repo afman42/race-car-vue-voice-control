@@ -160,7 +160,7 @@ describe("useCar - extended features", () => {
       rpm.value = CAR_SETTINGS.RPM_MAX;
 
       const startLap = currentLap.value;
-      for (let i = 0; i < 150; i++) runSimulationTick();
+      for (let i = 0; i < 200; i++) runSimulationTick();
 
       expect(currentLap.value).toBeGreaterThan(startLap);
     });
@@ -173,7 +173,7 @@ describe("useCar - extended features", () => {
       currentGear.value = 5;
       currentLap.value = CAR_SETTINGS.TOTAL_LAPS;
 
-      for (let i = 0; i < 150 && !raceFinished.value; i++) runSimulationTick();
+      for (let i = 0; i < 200 && !raceFinished.value; i++) runSimulationTick();
 
       expect(raceFinished.value).toBe(true);
       // Engine must stop so dashboard items freeze.

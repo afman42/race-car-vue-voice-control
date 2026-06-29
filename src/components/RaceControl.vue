@@ -463,7 +463,10 @@ const startOvertakeCountdown = () => {
 const processCommand = async (transcript) => {
   lastTranscript.value = transcript;
 
+  // Pause recognition while processing — reset the manual-stop flag so
+  // auto-restart can resume after the command completes.
   speechService.stopListening();
+  speechService.resetManualStop();
   isListening.value = false;
 
   const command = matchCommand(transcript, locale.value);

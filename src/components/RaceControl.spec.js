@@ -20,8 +20,9 @@ vi.mock("@/services/speechRecognitionService", () => ({
       return true;
     }),
     stopListening: vi.fn(),
+    resetManualStop: vi.fn(),
     setLanguage: vi.fn(),
-    isManuallyStopped: vi.fn(() => true),
+    isManuallyStopped: vi.fn(() => false),
   },
 }));
 
@@ -241,7 +242,7 @@ describe("RaceControl.vue", () => {
 
     it("displays a corner segment when lapProgress enters the first corner", async () => {
       const { lapProgress } = useCar();
-      lapProgress.value = 30;
+      lapProgress.value = 170;
       await flush();
 
       const wrapper = mount(RaceControl);
@@ -253,7 +254,7 @@ describe("RaceControl.vue", () => {
 
     it("displays a medium corner at the right position", async () => {
       const { lapProgress } = useCar();
-      lapProgress.value = 50; // In the medium corner (segments cover 25+8+12=45 to 45+10=55)
+      lapProgress.value = 300; // In the medium corner (150+48+72=270 to 270+60=330)
       await flush();
 
       const wrapper = mount(RaceControl);
@@ -264,7 +265,7 @@ describe("RaceControl.vue", () => {
 
     it("displays a fast corner at the right position", async () => {
       const { lapProgress } = useCar();
-      lapProgress.value = 75; // In the fast corner (55+15=70 to 70+10=80)
+      lapProgress.value = 450; // In the fast corner (330+90=420 to 420+60=480)
       await flush();
 
       const wrapper = mount(RaceControl);
