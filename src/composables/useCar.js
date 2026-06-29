@@ -227,7 +227,7 @@ export function useCar() {
     // DRS grants a straight-line speed boost (only on straights, per F1 rules).
     const drsBoost = drsStatus.value && seg.segment.type === "straight" ? 1.12 : 1.0;
     const base = 50 + ratio * gr * 200;
-    const raw = base * cf * drsBoost * (weatherConfig().gripFactor || 1.0) * paceFactor.value;
+    const raw = base * cf * drsBoost * selectedCar.value.stats.speedMul * (weatherConfig().gripFactor || 1.0) * paceFactor.value;
     return Math.round(raw);
   });
 
@@ -953,9 +953,10 @@ export function useCar() {
     return message;
   };
 
-  // Select a preset car. Only allowed while the engine is off (pre-race).
+  // Select a preset car. Only allowed pre-race (engine off, not pitting,
+  // not finished). The car choice persists across pit stops and resets.
   const selectCar = async (carId) => {
-    if (engineStatus.value) {
+    if (engineStatus.value || pitting.value) {
       const message = t("msg.carSelectEngineRunning");
       await ttsService.speak(message);
       return message;

@@ -242,4 +242,33 @@ export const COMMAND_MATCHERS = [
     command: "batteryStatus",
     keywords: { en: ["battery"], id: ["baterai"] },
   },
+  // Car selection — must come before any generic "car" keyword.
+  {
+    command: "carSpeedster",
+    keywords: {
+      en: ["speedster", "car speedster", "select speedster"],
+      id: ["speedster", "mobil speedster"],
+    },
+  },
+  {
+    command: "carBalanced",
+    keywords: {
+      en: ["balanced car", "car balanced", "select balanced"],
+      id: ["mobil seimbang", "pilih seimbang"],
+    },
+  },
+  {
+    command: "carGripmaster",
+    keywords: {
+      en: ["grip master", "car grip", "select grip"],
+      id: ["grip master", "mobil grip"],
+    },
+  },
+  {
+    command: "carEndurance",
+    keywords: {
+      en: ["endurance", "car endurance", "select endurance"],
+      id: ["endurance", "mobil endurance"],
+    },
+  },
 ];

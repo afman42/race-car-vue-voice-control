@@ -209,6 +209,10 @@
           {{ carDamage.toFixed(0) }}%
         </p>
       </div>
+      <div class="display-item car-tile" :style="{ borderColor: selectedCar.markerColor }">
+        <h2>{{ t("ui.selectCar") }}</h2>
+        <p class="status info">{{ selectedCar.label }}</p>
+      </div>
       <div class="display-item">
         <h2>{{ t("ui.bestLap") }}</h2>
         <p class="status info">{{ formatLapTime(bestLapTime) }}</p>
@@ -441,6 +445,10 @@ const commandActions = {
   aiRandom: () => setAiDifficulty("RANDOM"),
   aiOff: disableAi,
   aiStatus: getAiStatus,
+  carSpeedster: () => selectCar("speedster"),
+  carBalanced: () => selectCar("balanced"),
+  carGripmaster: () => selectCar("gripmaster"),
+  carEndurance: () => selectCar("endurance"),
 };
 
 const runCommand = async (command) => {
@@ -872,6 +880,12 @@ h1 {
   border-radius: 8px;
   padding: 0.3rem;
   background: rgba(255, 133, 27, 0.08);
+}
+
+.car-tile {
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 0.3rem;
 }
 
 .ai-sub {

@@ -174,6 +174,19 @@ describe("matchCommand", () => {
       expect(matchCommand("matikan lawan", "id")).toBe("aiOff");
       expect(matchCommand("status lawan", "id")).toBe("aiStatus");
     });
+
+    it("matches car selection commands", () => {
+      expect(matchCommand("speedster")).toBe("carSpeedster");
+      expect(matchCommand("car balanced")).toBe("carBalanced");
+      expect(matchCommand("select grip")).toBe("carGripmaster");
+      expect(matchCommand("endurance")).toBe("carEndurance");
+    });
+
+    it("matches Indonesian car keywords", () => {
+      expect(matchCommand("mobil speedster", "id")).toBe("carSpeedster");
+      expect(matchCommand("mobil seimbang", "id")).toBe("carBalanced");
+      expect(matchCommand("mobil endurance", "id")).toBe("carEndurance");
+    });
   });
 
   describe("fuzzy matching", () => {

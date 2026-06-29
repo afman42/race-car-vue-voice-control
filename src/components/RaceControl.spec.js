@@ -194,6 +194,77 @@ describe("RaceControl.vue", () => {
     });
   });
 
+  describe("car selection", () => {
+    it("renders the car select button with the default car name", () => {
+      const wrapper = mount(RaceControl);
+      const btn = wrapper.find(".car-select-button");
+      expect(btn.exists()).toBe(true);
+      expect(btn.text()).toContain("Balanced");
+    });
+
+    it("renders the car tile on the dashboard", () => {
+      const wrapper = mount(RaceControl);
+      const tile = wrapper.find(".car-tile");
+      expect(tile.exists()).toBe(true);
+      expect(tile.text()).toContain("Balanced");
+    });
+
+    it("opens the car modal on button click", async () => {
+      const wrapper = mount(RaceControl);
+      await wrapper.find(".car-select-button").trigger("click");
+      expect(wrapper.find(".car-modal").exists()).toBe(true);
+    });
+
+    it("selects a car via the modal", async () => {
+      const wrapper = mount(RaceControl);
+      const { selectedCar } = useCar();
+
+      await wrapper.find(".car-select-button").trigger("click");
+      const speedsterCard = wrapper.findAll(".car-card").find((c) =>
+        c.text().includes("Speedster"),
+      );
+      await speedsterCard.trigger("click");
+      await flush();
+
+      expect(selectedCar.value.id).toBe("speedster");
+      expect(wrapper.find(".car-modal").exists()).toBe(false);
+    });
+
+    it("disables the car select button while the engine runs", async () => {
+      const wrapper = mount(RaceControl);
+      const { startEngine } = useCar();
+      await startEngine();
+      await flush();
+
+      const btn = wrapper.find(".car-select-button");
+      expect(btn.attributes("disabled")).toBeDefined();
+    });
+
+    it("selects a car via voice command", async () => {
+      const wrapper = mount(RaceControl);
+      const { selectedCar } = useCar();
+
+      await wrapper.get(".control-button").trigger("click");
+      await capturedOnResult("endurance");
+      await flush();
+
+      expect(selectedCar.value.id).toBe("endurance");
+    });
+
+    it("selects a car via manual control button", async () => {
+      const wrapper = mount(RaceControl);
+      const { selectedCar } = useCar();
+
+      const gripBtn = wrapper
+        .findAll(".ctrl-button")
+        .find((b) => b.text().includes("Grip Master"));
+      await gripBtn.trigger("click");
+      await flush();
+
+      expect(selectedCar.value.id).toBe("gripmaster");
+    });
+  });
+
   describe("race standings", () => {
     it("renders the position badge and track map", () => {
       const wrapper = mount(RaceControl);

@@ -59,6 +59,10 @@ const manualControls = [
   { labelKey: "btn.aiHard", command: "aiHard" },
   { labelKey: "btn.aiRandom", command: "aiRandom" },
   { labelKey: "btn.aiOff", command: "aiOff" },
+  { labelKey: "btn.carSpeedster", command: "carSpeedster" },
+  { labelKey: "btn.carBalanced", command: "carBalanced" },
+  { labelKey: "btn.carGripmaster", command: "carGripmaster" },
+  { labelKey: "btn.carEndurance", command: "carEndurance" },
   { labelKey: "btn.reset", command: "reset" },
 ];
 </script>
