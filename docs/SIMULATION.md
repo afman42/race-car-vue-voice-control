@@ -14,9 +14,9 @@ The car simulation runs on a **250ms tick interval** (`CAR_SETTINGS.SIMULATION_T
 | **Engine Temp** | Rises with RPM + overtaking, cools toward 90°C ambient | Rise 4°C/tick, Cool 3°C/tick, Overtake +4°C/tick |
 | **Damage** | +4/tick while overheating, +2/tick on destroyed tires | Repaired only in pits; max 40% pace penalty at 100 damage |
 | **Gears** | RPM climbs 1000/tick; auto-upshift at 7500 RPM drops to 5000 RPM. Track-aware: upshifts on straights, downshifts into corners (2 gears/tick) | 7 gears with speed multipliers from 0.45× (1st) to 1.55× (7th). Corner targets: slow=2nd, medium=3rd, fast=4th |
-| **Lap Progress** | Distance accrues proportional to RPM × gear ratio × grip × pace × cornerFactor × DRS boost (straights only) | 100 distance units per lap; 10 laps total. Corners capped at 55% speed. DRS grants +12% pace on straights |
-| **Lap Timing** | +400ms simulated time per tick | Top 5 fastest laps kept on leaderboard |
-| **AI Rival** | Independent lap-time generator (no physics) | Base 8000ms/lap; difficulty sets pace ± variance |
+| **Lap Progress** | Distance accrues proportional to LAP_PROGRESS_BASE × RPM ratio × gear ratio × grip × pace × cornerFactor × DRS boost (straights only) | 600 distance units per lap (~80 ticks, ~20s); 10 laps total. Corners capped at 55% speed. DRS grants +12% pace on straights |
+| **Lap Timing** | +400ms simulated time per tick | Top 5 fastest laps kept on leaderboard. A full 10-lap race takes ~3.5 minutes |
+| **AI Rival** | Independent lap-time generator (no physics) | Base 32000ms/lap (~80 ticks); difficulty sets pace ± variance |
 
 ---
 
@@ -44,7 +44,7 @@ The car simulation runs on a **250ms tick interval** (`CAR_SETTINGS.SIMULATION_T
 | **Hard** | 1.00 (reference) | ±3% | Consistent, fast lap times |
 | **Random** | — | — | Picks one of the above randomly |
 
-- **Pace factor** scales the base lap time (8000ms): `time = base / paceFactor`
+- **Pace factor** scales the base lap time (32000ms): `time = base / paceFactor`
 - **Variance** is the random fractional swing applied each lap
 
 ---
@@ -95,8 +95,9 @@ All tunable constants live in [`src/config.js`](../src/config.js).
   TIRE_WEAR_RATE: 0.6,
   TIRE_OPTIMAL_THRESHOLD: 70,
   TIRE_WORN_THRESHOLD: 30,
-  LAP_DISTANCE: 100,
+  LAP_DISTANCE: 600,
   TOTAL_LAPS: 10,
+  LAP_PROGRESS_BASE: 8,
   TEMP_AMBIENT: 90,
   TEMP_OPTIMAL_MAX: 110,
   TEMP_CRITICAL: 130,
@@ -111,7 +112,7 @@ All tunable constants live in [`src/config.js`](../src/config.js).
   DAMAGE_MAJOR_THRESHOLD: 50,
   DAMAGE_CRITICAL_THRESHOLD: 80,
   DAMAGE_MAX_PACE_PENALTY: 0.4,
-  AI_BASE_LAP_MS: 8000,
+  AI_BASE_LAP_MS: 32000,
 
   // Gear simulation
   GEAR_COUNT: 7,

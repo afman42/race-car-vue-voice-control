@@ -353,8 +353,7 @@ export function useCar() {
       ? (CAR_SETTINGS.GEAR_RATIOS[currentGear.value] || 0.5)
       : 0;
     const rawSpeed =
-      CAR_SETTINGS.LAP_DISTANCE *
-      0.1 *
+      CAR_SETTINGS.LAP_PROGRESS_BASE *
       (0.3 + ratio * gearRatio) *
       weatherConfig().gripFactor *
       paceFactor.value;

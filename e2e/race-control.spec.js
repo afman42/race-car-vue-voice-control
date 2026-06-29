@@ -96,16 +96,15 @@ test.describe("Race Car Voice Control — E2E", () => {
       page,
     }) => {
       await page.getByRole("button", { name: "Start Engine" }).click();
-      await page.waitForTimeout(4500);
 
-      // The RPM gauge should show a non-zero value
-      const rpmText = await page.locator(".rpm-text").textContent();
-      const rpmVal = parseInt(rpmText, 10);
-      expect(rpmVal).toBeGreaterThan(0);
+      // The RPM gauge should show a non-zero value (auto-retry for flake-free).
+      await expect(page.locator(".rpm-text"))
+        .not.toHaveText("0", { timeout: 10_000 });
 
-      // At least some shift LEDs should be active
-      const activeLeds = page.locator(".shift-led.active");
-      const count = await activeLeds.count();
+      // At least some shift LEDs should be active once RPM climbs.
+      await expect(page.locator(".shift-led.active").first())
+        .toBeVisible({ timeout: 10_000 });
+      const count = await page.locator(".shift-led.active").count();
       expect(count).toBeGreaterThanOrEqual(1);
     });
 

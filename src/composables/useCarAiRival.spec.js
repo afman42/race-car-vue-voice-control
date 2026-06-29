@@ -86,7 +86,7 @@ describe("useCar - AI rival", () => {
       setAiDifficulty("MEDIUM");
 
       // Enough ticks to complete at least one AI lap at the base pace.
-      for (let i = 0; i < 30; i++) runSimulationTick();
+      for (let i = 0; i < 100; i++) runSimulationTick();
 
       expect(aiLeaderboard.value.length).toBeGreaterThan(0);
       expect(aiBestLapTime.value).not.toBeNull();
@@ -99,7 +99,7 @@ describe("useCar - AI rival", () => {
       expect(engineStatus.value).toBe(false);
 
       const startLap = aiCurrentLap.value;
-      for (let i = 0; i < 30; i++) runSimulationTick();
+      for (let i = 0; i < 100; i++) runSimulationTick();
 
       expect(aiCurrentLap.value).toBeGreaterThan(startLap);
     });
@@ -112,11 +112,11 @@ describe("useCar - AI rival", () => {
       const { setAiDifficulty, runSimulationTick, aiBestLapTime } = car;
 
       setAiDifficulty("EASY");
-      for (let i = 0; i < 40; i++) runSimulationTick();
+      for (let i = 0; i < 100; i++) runSimulationTick();
       const easyBest = aiBestLapTime.value;
 
       setAiDifficulty("HARD"); // resets AI progress
-      for (let i = 0; i < 40; i++) runSimulationTick();
+      for (let i = 0; i < 100; i++) runSimulationTick();
       const hardBest = aiBestLapTime.value;
 
       expect(hardBest).toBeLessThan(easyBest);
@@ -126,7 +126,7 @@ describe("useCar - AI rival", () => {
       const { setAiDifficulty, runSimulationTick, aiLeaderboard } = useCar();
       setAiDifficulty("MEDIUM");
 
-      for (let i = 0; i < 200; i++) runSimulationTick();
+      for (let i = 0; i < 500; i++) runSimulationTick();
 
       const times = aiLeaderboard.value.map((e) => e.time);
       const sorted = [...times].sort((a, b) => a - b);
@@ -140,7 +140,7 @@ describe("useCar - AI rival", () => {
       const { setAiDifficulty, runSimulationTick, aiFinished } = useCar();
       setAiDifficulty("HARD");
 
-      for (let i = 0; i < 500 && !aiFinished.value; i++) runSimulationTick();
+      for (let i = 0; i < 1200 && !aiFinished.value; i++) runSimulationTick();
 
       expect(aiFinished.value).toBe(true);
       expect(ttsService.speak).toHaveBeenCalledWith(
