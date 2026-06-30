@@ -157,6 +157,28 @@ export const COMMAND_MATCHERS = [
     command: "activateDrs",
     keywords: { en: ["drs"], id: ["drs"] },
   },
+  // Qualifying — specific phrases first, generic "quali" last
+  {
+    command: "qualifyingStatus",
+    keywords: {
+      en: ["qualifying status", "quali status", "qualy status"],
+      id: ["status kualifikasi", "status quali"],
+    },
+  },
+  {
+    command: "qualifyingBest",
+    keywords: {
+      en: ["qualifying best lap", "quali best", "qualy best"],
+      id: ["lap terbaik kualifikasi", "terbaik quali"],
+    },
+  },
+  {
+    command: "startQualifying",
+    keywords: {
+      en: ["qualifying mode", "start qualifying", "qualifying", "qualy", "quali"],
+      id: ["mode kualifikasi", "mulai kualifikasi", "kualifikasi", "kuali"],
+    },
+  },
   {
     command: "position",
     keywords: {
@@ -220,6 +242,15 @@ export const COMMAND_MATCHERS = [
       id: ["kerusakan", "kondisi mobil"],
     },
   },
+  // Tire temperature — before generic "temp" matcher so "tire temperature"
+  // matches tireTempStatus, not tempStatus.
+  {
+    command: "tireTempStatus",
+    keywords: {
+      en: ["tire temperature", "tire temp", "tyre temperature"],
+      id: ["suhu ban", "temperatur ban"],
+    },
+  },
   {
     command: "tempStatus",
     keywords: {
@@ -241,6 +272,14 @@ export const COMMAND_MATCHERS = [
   {
     command: "batteryStatus",
     keywords: { en: ["battery"], id: ["baterai"] },
+  },
+  // Pit window status — must come before generic "pit" keywords
+  {
+    command: "pitWindowStatus",
+    keywords: {
+      en: ["pit window", "window status", "box window", "pit strategy"],
+      id: ["jendela pit", "strategi pit"],
+    },
   },
   // Car selection — must come before any generic "car" keyword.
   {

@@ -15,6 +15,8 @@ import {
   TIRE_COMPOUNDS,
   ERS_MODES,
   WEATHER_CONDITIONS,
+  WEATHER_SHIFT,
+  TIRE_TEMP,
 } from "@/config";
 import audioService from "@/services/audioService";
 import engineAudioService from "@/services/engineAudioService";
@@ -33,8 +35,12 @@ import {
   currentGear,
   currentSegmentIndex,
   drsStatus,
+  drsEligible,
   overtakeActive,
   tireLife,
+  tireTemp,
+  tireTempStatus,
+  tireTempWarned,
   tireCompound,
   fuelLevel,
   batteryLevel,
@@ -66,6 +72,7 @@ import {
   normalizedRpmRatio,
   statusWord,
   paceFactor,
+  simulationInterval,
   clearSimulationInterval,
   setSimulationInterval,
   clearOvertakeTimeout,
@@ -73,8 +80,24 @@ import {
   setLastSegmentIndex,
   setSimWatcherRegistered,
   simWatcherRegistered,
+  // Qualifying state
+  raceMode,
+  qualifyingLapsRemaining,
+  qualifyingResults,
+  qualifyingBestLap,
+  // Weather shift state
+  nextWeather,
+  weatherChangeLap,
+  // Pit window state
+  pitWindowStart,
+  pitWindowVisible,
+  pitWindowUrgent,
+  // Shared helpers
+  computeTireTempStatus,
+  _resetSingletons,
 } from "./useCarState";
-import { runSimulationTick } from "./useCarSimulation";
+import { runSimulationTick, scheduleWeatherShift } from "./useCarSimulation";
+import { useQualifying } from "./useQualifying";
 
 // Re-export for UI and tests that import from useCar.
 export { findSegmentAtProgress, _resetSingletons } from "./useCarState";
@@ -88,6 +111,19 @@ export function useCar() {
   const isLowFuel = computed(
     () => fuelLevel.value < CAR_SETTINGS.LOW_FUEL_THRESHOLD,
   );
+
+  // Tire temperature display status (for UI)
+  const tireTempDisplayStatus = computed(() => computeTireTempStatus(tireTemp.value));
+
+  // Pit window info for display
+  const pitWindowInfo = computed(() => {
+    if (!pitWindowVisible.value || raceMode.value === "qualifying") return null;
+    return {
+      startLap: pitWindowStart.value,
+      urgent: pitWindowUrgent.value,
+      currentLap: currentLap.value,
+    };
+  });
 
   const tireStatus = computed(() => {
     if (!engineStatus.value && tireLife.value >= 100) return "Cold";
@@ -144,6 +180,15 @@ export function useCar() {
 
   const playerLoopPos = computed(() => loopPosition(playerProgress.value));
   const rivalLoopPos = computed(() => loopPosition(rivalProgress.value));
+
+  // --- QUALIFYING ---
+  const {
+    computedQualifyingPosition,
+    qualifyingInfo,
+    startQualifying,
+    getQualifyingStatus,
+    getQualifyingBestLap,
+  } = useQualifying();
 
   // --- HELPERS ---
   const speakAndReturn = async (key, params) => {
@@ -207,6 +252,8 @@ export function useCar() {
       message = t("msg.drsEngineOff");
     } else if (drsStatus.value) {
       message = t("msg.drsAlreadyActive");
+    } else if (ai.enabled.value && !drsEligible.value) {
+      message = t("msg.drsNotEligible");
     } else {
       drsStatus.value = true;
       try {
@@ -368,6 +415,31 @@ export function useCar() {
     });
   };
 
+  const getTireTempStatus = async () => {
+    const message = t("msg.tireTempStatus", {
+      temp: tireTemp.value,
+      status: statusWord(tireTempDisplayStatus.value),
+    });
+    await ttsService.speak(message);
+    return message;
+  };
+
+  const getPitWindowStatus = async () => {
+    if (!pitWindowVisible.value) {
+      const message = t("msg.pitWindowOk");
+      await ttsService.speak(message);
+      return message;
+    }
+    if (pitWindowUrgent.value) {
+      const message = t("msg.pitWindowUrgent", { lap: pitWindowStart.value });
+      await ttsService.speak(message);
+      return message;
+    }
+    const message = t("msg.pitWindowRecommend", { lap: pitWindowStart.value });
+    await ttsService.speak(message);
+    return message;
+  };
+
   const getBestLap = () => {
     if (bestLapTime.value === null) return speakAndReturn("msg.noLapYet");
     return speakAndReturn("msg.bestLap", {
@@ -432,43 +504,8 @@ export function useCar() {
   };
 
   const resetRace = async () => {
-    clearOvertakeTimeout();
-
-    engineStatus.value = false;
-    rpm.value = 0;
-    currentGear.value = 0;
-    drsStatus.value = false;
-    overtakeActive.value = false;
-    pitting.value = false;
-    tireLife.value = 100;
-    tireCompound.value = TIRE_COMPOUNDS.MEDIUM.label;
-    fuelLevel.value = 100;
-    batteryLevel.value = 100;
-    fuelMix.value = FUEL_MIXES.STANDARD;
-    ersMode.value = ERS_MODES.BALANCED.label;
-    engineTemp.value = CAR_SETTINGS.TEMP_AMBIENT;
-    overheating.value = false;
-    currentLap.value = 1;
-    lapProgress.value = 0;
-    raceFinished.value = false;
-    lowFuelWarned.value = false;
-    lowBatteryWarned.value = false;
-    overheatWarned.value = false;
-
-    currentLapTime.value = 0;
-    lastLapTime.value = null;
-    bestLapTime.value = null;
-    leaderboard.value = [];
-    weather.value = WEATHER_CONDITIONS.DRY.label;
-    carDamage.value = 0;
-    selectedCar.value = CAR_PRESETS[1];
-    damageWarned.value = false;
-
-    setLastSegmentIndex(-1);
-    currentSegmentIndex.value = 0;
-
+    _resetSingletons();
     ai.resetProgress();
-
     const message = t("msg.raceReset");
     await ttsService.speak(message);
     return message;
@@ -496,12 +533,20 @@ export function useCar() {
   if (!simWatcherRegistered) {
     setSimWatcherRegistered(true);
     watch(
-      [engineStatus, ai.enabled, ai.finished, pitting],
+      [engineStatus, ai.enabled, ai.finished, ai.qualifyingFinished, pitting],
       () => {
+        const aiShouldRun =
+          ai.enabled.value &&
+          !ai.finished.value &&
+          !ai.qualifyingFinished.value;
         const shouldRun =
           !pitting.value &&
-          (engineStatus.value || (ai.enabled.value && !ai.finished.value));
+          (engineStatus.value || aiShouldRun);
         if (shouldRun) {
+          // Schedule weather shift when a new race session starts
+          if (simulationInterval === null && raceMode.value !== "qualifying" && nextWeather.value === null) {
+            scheduleWeatherShift();
+          }
           clearSimulationInterval();
           setSimulationInterval(
             setInterval(runSimulationTick, CAR_SETTINGS.SIMULATION_TICK_MS),
@@ -550,6 +595,13 @@ export function useCar() {
     weather,
     carDamage,
     selectedCar,
+    // Qualifying state
+    raceMode,
+    qualifyingLapsRemaining,
+    qualifyingResults,
+    qualifyingBestLap,
+    qualifyingPosition: computedQualifyingPosition,
+    qualifyingInfo,
     // AI rival state (re-exposed from useAiRival)
     aiEnabled: ai.enabled,
     aiDifficulty: ai.difficulty,
@@ -558,6 +610,23 @@ export function useCar() {
     aiBestLapTime: ai.bestLapTime,
     aiLeaderboard: ai.leaderboard,
     aiFinished: ai.finished,
+    computedQualifyingPosition,
+    // Tire temp state
+    tireTemp,
+    tireTempStatus,
+    tireTempDisplayStatus,
+    // DRS eligibility
+    drsEligible,
+    // Pit window state
+    pitWindowInfo,
+    pitWindowStart,
+    pitWindowVisible,
+    pitWindowUrgent,
+    // Weather shift state
+    nextWeather,
+    weatherChangeLap,
+    aiQualifyingBestLap: ai.qualifyingBestLap,
+    aiQualifyingFinished: ai.qualifyingFinished,
     // Getters
     tireStatus,
     tempStatus,
@@ -596,6 +665,11 @@ export function useCar() {
     performPitStop,
     resetRace,
     selectCar,
+    startQualifying,
+    getQualifyingStatus,
+    getQualifyingBestLap,
+    getTireTempStatus,
+    getPitWindowStatus,
     // Helpers
     formatLapTime,
     // Internals exposed for testing

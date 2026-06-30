@@ -187,6 +187,48 @@ describe("matchCommand", () => {
       expect(matchCommand("mobil seimbang", "id")).toBe("carBalanced");
       expect(matchCommand("mobil endurance", "id")).toBe("carEndurance");
     });
+
+    it("matches qualifying commands", () => {
+      expect(matchCommand("qualifying")).toBe("startQualifying");
+      expect(matchCommand("qualy")).toBe("startQualifying");
+      expect(matchCommand("start qualifying")).toBe("startQualifying");
+      expect(matchCommand("quali")).toBe("startQualifying");
+    });
+
+    it("matches qualifying status commands", () => {
+      expect(matchCommand("qualifying status")).toBe("qualifyingStatus");
+      expect(matchCommand("quali status")).toBe("qualifyingStatus");
+      expect(matchCommand("qualy status")).toBe("qualifyingStatus");
+    });
+
+    it("matches qualifying best lap commands", () => {
+      expect(matchCommand("qualifying best lap")).toBe("qualifyingBest");
+      expect(matchCommand("quali best")).toBe("qualifyingBest");
+      expect(matchCommand("qualy best")).toBe("qualifyingBest");
+    });
+
+    it("matches Indonesian qualifying keywords", () => {
+      expect(matchCommand("kualifikasi", "id")).toBe("startQualifying");
+      expect(matchCommand("mode kualifikasi", "id")).toBe("startQualifying");
+      expect(matchCommand("status kualifikasi", "id")).toBe("qualifyingStatus");
+      expect(matchCommand("lap terbaik kualifikasi", "id")).toBe("qualifyingBest");
+    });
+
+    it("matches tire temperature status commands", () => {
+      expect(matchCommand("tire temperature")).toBe("tireTempStatus");
+      expect(matchCommand("tire temp")).toBe("tireTempStatus");
+      expect(matchCommand("tyre temperature")).toBe("tireTempStatus");
+    });
+
+    it("matches pit window status commands", () => {
+      expect(matchCommand("pit window")).toBe("pitWindowStatus");
+      expect(matchCommand("pit strategy")).toBe("pitWindowStatus");
+    });
+
+    it("matches Indonesian tire temp and pit window keywords", () => {
+      expect(matchCommand("suhu ban", "id")).toBe("tireTempStatus");
+      expect(matchCommand("jendela pit", "id")).toBe("pitWindowStatus");
+    });
   });
 
   describe("fuzzy matching", () => {

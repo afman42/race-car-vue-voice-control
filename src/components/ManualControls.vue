@@ -49,6 +49,8 @@ const manualControls = [
   { labelKey: "btn.batteryStatus", command: "batteryStatus" },
   { labelKey: "btn.weatherStatus", command: "weatherStatus" },
   { labelKey: "btn.bestLap", command: "bestLap" },
+  { labelKey: "btn.tireTempStatus", command: "tireTempStatus" },
+  { labelKey: "btn.pitWindowStatus", command: "pitWindowStatus" },
   { labelKey: "btn.damageStatus", command: "damageStatus" },
   { labelKey: "btn.weatherDry", command: "weatherDry" },
   { labelKey: "btn.weatherCloudy", command: "weatherCloudy" },
@@ -63,6 +65,9 @@ const manualControls = [
   { labelKey: "btn.carBalanced", command: "carBalanced" },
   { labelKey: "btn.carGripmaster", command: "carGripmaster" },
   { labelKey: "btn.carEndurance", command: "carEndurance" },
+  { labelKey: "btn.qualiStart", command: "startQualifying" },
+  { labelKey: "btn.qualiStatus", command: "qualifyingStatus" },
+  { labelKey: "btn.qualiBest", command: "qualifyingBest" },
   { labelKey: "btn.reset", command: "reset" },
 ];
 </script>

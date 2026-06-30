@@ -4,115 +4,174 @@
 
 ```
 src/
-├── config.js                        # All tunable constants (physics, AI, compounds, etc.)
-├── i18n.js                          # Internationalization engine (locale detection + t())
-├── main.js                          # Vue app bootstrap
-├── App.vue                          # Root component (applies global font & dark theme)
+├── config.js                    # All tunable constants
+├── i18n.js                      # i18n engine (locale detection + t())
+├── main.js                      # Vue app bootstrap
+├── App.vue                      # Root component (global font & dark theme)
 │
-├── components/
-│   ├── RaceControl.vue              # Main UI: dashboard, controls (template + styles only)
-│   ├── TrackMap.vue                 # SVG track map with player/rival markers + segment boundaries
-│   ├── RpmGauge.vue                 # RPM gauge with needle animation
-│   ├── Leaderboard.vue              # Fastest laps board (player + AI, reused)
-│   ├── ManualControls.vue           # On-screen button grid (keyboard fallback)
-│   └── CarSelectModal.vue           # Pre-race car selection modal (4 presets)
+├── components/                  # Vue Single-File Components
+│   ├── RaceControl.vue          # Main dashboard UI (~540 lines)
+│   ├── RaceControl.css          # Dashboard styles (extracted for readability)
+│   ├── TrackMap.vue             # SVG track map with player/rival markers
+│   ├── RpmGauge.vue             # RPM gauge with needle animation
+│   ├── Leaderboard.vue          # Fastest laps board (player + AI)
+│   ├── ManualControls.vue       # On-screen button grid
+│   └── CarSelectModal.vue       # Pre-race car selection modal
 │
 ├── commands/
-│   └── matchers.js                  # Voice command keyword matchers (en + id), ordered
+│   └── matchers.js              # Voice command keyword matchers (en + id)
 │
-├── composables/                     # Vue 3 composables (reactive state + logic)
-│   ├── useCarState.js               # Module-scoped singleton state refs + computed properties
-│   ├── useCarSimulation.js           # Core simulation tick, autoShift, stall/overheat
-│   ├── useCar.js                    # Slim orchestrator: imports state + sim, exposes public API
-│   ├── useAiRival.js                # AI rival singleton: lap-time generator
-│   ├── useRaceControl.js            # UI orchestration: command routing, speech, overtake countdown
-│   ├── commandRouter.js             # Voice transcript → command key (exact + fuzzy matching)
-│   ├── useCar.spec.js               # Engine, DRS, overtake, pit stop, car selection tests
-│   ├── useCarSimulation.spec.js     # Simulation tick + autoShift edge case tests
-│   ├── useCarFeatures.spec.js       # Compound, ERS, temperature, lap, help tests
-│   ├── useCarRaceFeatures.spec.js   # Lap timing, leaderboard, weather, damage tests
-│   ├── useCarAiRival.spec.js        # AI difficulty, lap generation, board tests
-│   ├── useCarStandings.spec.js      # Race standings & track position tests
-│   └── commandRouter.spec.js        # Command matching & fuzzy tests
+├── composables/                 # Vue 3 reactive logic
+│   ├── useCarState.js           # Singleton state refs + helpers (source of truth)
+│   ├── useCarSimulation.js      # Core simulation tick (physics engine)
+│   ├── useCar.js                # Slim orchestrator (~620 lines)
+│   ├── useRaceControl.js        # UI orchestration, speech, command routing
+│   ├── useAiRival.js            # AI rival lap-time generator
+│   ├── useQualifying.js         # Qualifying mode logic (extracted)
+│   └── commandRouter.js         # Voice transcript → command key
 │
 ├── locales/
-│   ├── en.js                        # English message dictionary (UI + spoken + errors)
-│   └── id.js                        # Indonesian message dictionary
+│   ├── en.js                    # English messages
+│   └── id.js                    # Indonesian messages
 │
 ├── utils/
-│   ├── formatLapTime.js             # Lap time formatter: M:SS.mmm
-│   ├── formatLapTime.spec.js        # Formatter unit tests
-│   ├── raceStanding.js              # Progress, standings, position formatting
-│   └── raceStanding.spec.js         # Standings utility unit tests
+│   ├── formatLapTime.js         # Lap time formatter
+│   └── raceStanding.js          # Progress, standings, position formatting
 │
-└── services/                        # Browser API wrappers
-    ├── audioService.js              # Preload + play sound effects (graceful on failure)
-    ├── speechRecognitionService.js  # Web Speech API recognition wrapper (auto-restart, fatal-error guard)
-    ├── textToSpeechService.js       # Web Speech API synthesis wrapper (voice matching, voiceschanged cache)
-    └── engineAudioService.js        # Synthesized engine pitch via Web Audio API (node disconnect on stop)
-
-e2e/                                 # Playwright end-to-end tests
-├── race-control.spec.js             # 28 tests: dashboard, engine, AI, DRS, etc.
-└── race-app.spec.js                 # 39 tests: comprehensive app behavior
+└── services/                    # Browser API wrappers
+    ├── audioService.js              # Sound effect playback
+    ├── engineAudioService.js        # Synthesized engine pitch (Web Audio API)
+    ├── speechRecognitionService.js  # Web Speech API recognition
+    └── textToSpeechService.js       # Web Speech API synthesis
 ```
 
 ---
 
 ## Design Decisions
 
-### Singleton State Pattern
+### 1. Singleton State Pattern
 
-All state is defined at **module scope** (outside the composable function), so every component that calls `useCar()` or `useAiRival()` shares the **same reactive instance**. No prop drilling, no provide/inject needed — the whole app is synchronized by default.
+**All state is module-scoped** — every `useCar()` call returns the same reactive instances. No prop drilling, no provide/inject needed. The whole app synchronizes automatically.
 
-### AI as a Lap-Time Generator
+```
+Module-level refs (useCarState.js)
+    ├── engineStatus, rpm, currentGear
+    ├── tireLife, tireTemp, tireCompound
+    ├── fuelLevel, batteryLevel, fuelMix, ersMode
+    ├── engineTemp, overheating, carDamage
+    ├── currentLap, lapProgress, raceFinished
+    ├── drsStatus, drsEligible, overtakeActive
+    ├── weather, nextWeather, weatherChangeLap
+    ├── pitWindowStart, pitWindowVisible, pitWindowUrgent
+    ├── raceMode, qualifyingLapsRemaining, qualifyingBestLap
+    └── ... plus computed helpers (effectiveStats, paceFactor, etc.)
+```
 
-The AI rival (`useAiRival.js`) is modeled as a **lap-time generator**, not a full physics car. It has no engine, fuel, tires, or temperature simulation. Each tick it accrues simulated time toward a target lap time (determined by difficulty), and on completion posts a time to its own leaderboard. This keeps the human car's state completely independent.
+**Reset pattern:** `_resetSingletons()` restores all state to defaults. Used by both tests (via `beforeEach`) and the production `resetRace()` action.
 
-### Two-Pass Command Matching
+### 2. AI as a Lap-Time Generator
 
-The `commandRouter.js` module resolves voice transcripts to command keys. Keyword matchers are defined in `commands/matchers.js` (ordered — specific multi-word commands before broad single-word ones):
+The AI rival (`useAiRival.js`) is **not** a full physics simulation — it has no engine, fuel, tires, or temperature. Instead it's a simple **lap-time generator**:
 
-1. **Pass 1 — Word-boundary match** (fast, precise): checks if any known keyword appears at a word boundary in the transcript (prevents "collapse" matching "lap" while still allowing "raining" to match "rain")
-2. **Pass 2 — Fuzzy match** (tolerant): splits the transcript into word tokens, then checks each keyword phrase using per-word Levenshtein edit distance
+- Each tick accrues simulated milliseconds toward a target lap time
+- Difficulty settings (`paceFactor` + `variance`) control speed and consistency
+- On completing a lap, it posts a time to its own leaderboard
+- This keeps the player's simulation completely independent
 
-Short keywords (< 4 chars) require exact matches to prevent false positives (e.g. "t" matching "tire").
+### 3. Two-Pass Command Matching
 
-### Graceful Audio Handling
+`commandRouter.js` resolves voice transcripts to command keys using two passes:
 
-Both `audioService.js` and `textToSpeechService.js` are designed to **never crash the app**:
+1. **Pass 1 — Word-boundary match** (fast, precise): checks if any keyword appears at a word boundary in the transcript. Prevents "collapse" matching "lap" while allowing "raining" to match "rain". Short keywords (< 4 chars) require exact matches to prevent false positives.
 
-- `audioService.js` tracks sound load failures and silently resolves for broken sounds
-- `textToSpeechService.js` resolves on error instead of rejecting, so headless browsers (Playwright) don't break command processing
-- The `runCommand` function in `RaceControl.vue` wraps each action in a try-catch as a safety net
+2. **Pass 2 — Fuzzy match** (tolerant): splits transcript into tokens, then checks each keyword phrase using per-word **Levenshtein edit distance**. Tolerates slips like "start engin" → "startEngine".
 
-### Warning Latches
+**Keyword ordering matters** — matchers are ordered in `commands/matchers.js` with specific multi-word commands before broad single-word ones (e.g. "tire temperature" before "temperature", "qualifying status" before "qualifying").
 
-Each critical threshold (fuel, battery, temperature, damage) triggers exactly **one** voice alert per crossing. A latch flips when the threshold is crossed and resets when the value recovers, preventing spam.
+### 4. Feature Extraction (Slim Composables)
 
-### Auto-Restarting Speech Recognition
+The project follows a pattern of extracting focused composables from the main orchestrator:
 
-After each successful command, the speech recognition service automatically restarts after a 500ms delay. Manually clicking "Stop Radio" / "Hentikan Radio" sets a flag that prevents auto-restart. Fatal errors (`not-allowed`, `service-not-allowed`, `audio-capture`) also suppress auto-restart to avoid infinite retry loops when the microphone is denied.
+| Composable | Extracted From | Purpose |
+|---|---|---|
+| `useCarState.js` | — | Singleton state (always existed) |
+| `useCarSimulation.js` | `useCar.js` | Physics tick, auto-shift, stall/overheat |
+| `useRaceControl.js` | `RaceControl.vue` | UI logic, speech, command routing |
+| `useQualifying.js` | `useCar.js` | Qualifying mode (P1/P2 shootout) |
+
+This keeps each file focused and testable.
+
+### 5. Graceful Error Handling
+
+Every service is designed to **never crash the app**:
+
+| Service | Safeguard |
+|---|---|
+| `audioService.js` | Tracks load failures, silently resolves for broken sounds |
+| `textToSpeechService.js` | Resolves on error instead of rejecting (headless browsers) |
+| `runCommand()` | Wraps each action in try-catch |
+| `speechRecognitionService.js` | Fatal errors (`not-allowed`) suppress auto-restart |
+
+### 6. Warning Latches
+
+Each critical threshold (fuel, battery, temperature, damage, tire temp) triggers exactly **one** voice alert per crossing. A latch resets when the value recovers, preventing spam.
+
+### 7. Auto-Restarting Speech Recognition
+
+After each successful command, speech recognition auto-restarts after **500ms**. Manual "Stop Radio" sets a flag that prevents auto-restart. Fatal errors (microphone denied) also suppress auto-restart.
 
 ---
 
 ## Data Flow
 
 ```
-User speaks
-    ↓
-SpeechRecognitionService (Web Speech API)
-    ↓
-commandRouter.matchCommand(transcript, locale)
-    → exact match → fuzzy match
-    ↓
-command key (e.g. "startEngine", "fuelMixLean")
-    ↓
-RaceControl.vue → commandActions[command]()
-    → wrapped in try-catch → updates reactive state
-    → speaks response via TTS → returns status message
-    ↓
-Dashboard updates reactively via Vue computed properties
+1. User speaks a command
+        ↓
+2. SpeechRecognitionService (Web Speech API)
+        ↓
+3. commandRouter.matchCommand(transcript, locale)
+   → Pass 1: exact word-boundary match
+   → Pass 2: fuzzy Levenshtein match
+        ↓
+4. Command key (e.g. "startEngine", "fuelMixLean")
+        ↓
+5. RaceControl.vue → runCommand(command)
+   → commandActions[command]() from useRaceControl
+   → Updates reactive state in useCarState
+   → Speaks response via TTS
+   → Returns status message
+        ↓
+6. Dashboard updates reactively via Vue computed properties
+   (speedKmh, tireStatus, standings, etc.)
 ```
+
+---
+
+## Services Layer
+
+### `audioService.js`
+- Pre-loads `Audio` elements at startup
+- `playSound(name)` silently resolves for failed loads
+- Graceful fallback when Audio API is unavailable
+
+### `engineAudioService.js`
+- Synthesizes continuous engine pitch via `OscillatorNode` + gain
+- `start(rpm)` / `setRpm(rpm)` / `stop()` for smooth transitions
+- Upshift blips (sine 1200→600 Hz) and downshift grumbles (sawtooth + white noise)
+
+### `speechRecognitionService.js`
+- Wraps `webkitSpeechRecognition` / `SpeechRecognition`
+- Dynamic language switching via `setLanguage()`
+- Auto-restart unless manually stopped or fatal error occurred
+- Handles: mic denied, not supported, no speech, network errors
+
+### `textToSpeechService.js`
+- Wraps `window.speechSynthesis`
+- Caches voice list, refreshes on `voiceschanged` event
+- Picks voice matching current language (prefers exact BCP-47 match)
+- Cancels in-progress speech before new utterances
+- Rate set to 1.1× for natural pacing
+- **Never rejects** — errors log as warnings and resolve silently
 
 ---
 
@@ -124,64 +183,20 @@ Engine ON or AI enabled (and not pitting)
 250ms tick interval (setInterval)
     ↓
 runSimulationTick():
-    ├── Skip if pitting (pit stop freezes all systems)
+    ├── Skip if pitting
     ├── Fuel consumption (RPM × mix rate)
-    ├── Tire wear (RPM × compound × weather)
+    ├── Tire wear (RPM × compound × weather × tire temp factor)
     ├── Battery recharge (ERS mode)
-    ├── Engine temperature (RPM + overtake - cooling)
-    ├── Damage accrual (overheat + worn tires)
-    ├── Lap progress (RPM × gear × grip × pace × DRS boost on straights)
-    ├── AI rival tick
-    ├── Warning checks (fuel, battery, temp, damage)
-    ├── RPM climb (+1000/tick)
+    ├── Engine temperature (RPM + overtake - cooling + weather bias)
+    ├── Tire temperature (driving heat - coasting cool + weather bias)
+    ├── DRS eligibility check (distance to rival on detection segment)
+    ├── Pit window projection (tire wear + fuel per lap)
+    ├── Weather shift check (forecast + apply)
+    ├── Damage accrual (overheat + worn tires + overheated tires)
+    ├── Lap progress (RPM × gear × grip × tire temp × DRS boost)
+    ├── AI rival tick (independent lap-time generator)
+    ├── Warning checks (fuel, battery, temp, damage, tire temp)
+    ├── RPM climb
     ├── Track-aware gear shifting (autoShift)
     └── Engine stall / overheat check
 ```
-
----
-
-## Services
-
-### `audioService.js`
-- Pre-loads `Audio` elements at startup
-- Tracks loaded sounds in a `Set`
-- `playSound(name)` silently resolves for failed loads
-- Falls back gracefully when `Audio` API is unavailable (e.g. server-side rendering)
-
-### `engineAudioService.js`
-- Synthesizes a continuous engine pitch via `OscillatorNode` + gain
-- `start(rpm)` / `setRpm(rpm)` / `stop()` for smooth pitch transitions
-- `onShiftUp()` / `onShiftDown()` play quick blip sounds with distinct character
-  - Upshifts: short sine burst (1200→600 Hz)
-  - Downshifts: sawtooth grumble + backfire crackle with white-noise burst
-
-### `speechRecognitionService.js`
-- Wraps `window.SpeechRecognition` / `webkitSpeechRecognition`
-- Supports dynamic language switching via `setLanguage()`
-- **Auto-restart**: if the recognition service ends without manual stoppage, it restarts after 100ms — unless the last error was fatal (`not-allowed`, `service-not-allowed`, `audio-capture`), which suppresses restart to avoid infinite loops
-- Handles errors: mic denied, not supported, no speech, network
-
-### `textToSpeechService.js`
-- Wraps `window.speechSynthesis`
-- Caches the voice list and refreshes on the `voiceschanged` event (Chrome populates `getVoices()` asynchronously)
-- Picks a voice matching the current language (prefers exact BCP-47 match)
-- Cancels any in-progress speech before starting new utterances
-- **Never rejects** — errors are logged as warnings and resolved silently
-- Rate set to 1.1× for natural pacing
-
----
-
-## Configuration
-
-All tunable constants live in [`src/config.js`](../src/config.js). Key sections:
-
-| Export | Purpose |
-|---|---|
-| `CAR_SETTINGS` | Core simulation: RPM, gears, fuel, tires, battery, temperature, damage, lap timing, track layout |
-| `AI_DIFFICULTY` | EASY / MEDIUM / HARD pace factors and variance |
-| `FUEL_MIXES` | LEAN / STANDARD / RICH display labels |
-| `TIRE_COMPOUNDS` | SOFT / MEDIUM / HARD wear factors |
-| `ERS_MODES` | HOTLAP / BALANCED / CHARGE recharge factors |
-| `WEATHER_CONDITIONS` | DRY / CLOUDY / WET / STORM grip, wear, temp bias |
-
-See [`docs/SIMULATION.md`](SIMULATION.md) for the full reference.

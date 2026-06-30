@@ -179,4 +179,66 @@ describe("useCar - AI rival", () => {
       expect(aiLeaderboard.value).toEqual([]);
     });
   });
+
+  describe("qualifying mode", () => {
+    it("AI has no qualifying best lap initially", () => {
+      const { aiQualifyingBestLap } = useCar();
+      expect(aiQualifyingBestLap.value).toBeNull();
+    });
+
+    it("AI is not qualifying-finished initially", () => {
+      const { aiQualifyingFinished } = useCar();
+      expect(aiQualifyingFinished.value).toBe(false);
+    });
+
+    it("AI tracks qualifying laps when qualifying mode is on", async () => {
+      const { startQualifying, setAiDifficulty, runSimulationTick, aiQualifyingBestLap, aiQualifyingFinished } = useCar();
+      await startQualifying();
+      await setAiDifficulty("HARD");
+
+      // Run enough ticks for AI to complete qualifying laps
+      for (let i = 0; i < 300 && !aiQualifyingFinished.value; i++) {
+        runSimulationTick();
+      }
+
+      expect(aiQualifyingBestLap.value).not.toBeNull();
+      expect(aiQualifyingFinished.value).toBe(true);
+    });
+
+    it("AI does not track qualifying laps in normal race mode", async () => {
+      const { setAiDifficulty, runSimulationTick, aiQualifyingBestLap, aiQualifyingFinished } = useCar();
+      await setAiDifficulty("HARD");
+
+      for (let i = 0; i < 100; i++) runSimulationTick();
+
+      // In normal race mode, should not have qualifying data
+      expect(aiQualifyingBestLap.value).toBeNull();
+      expect(aiQualifyingFinished.value).toBe(false);
+    });
+
+    it("resetRace clears AI qualifying state", async () => {
+      const { startQualifying, setAiDifficulty, runSimulationTick, resetRace, aiQualifyingBestLap, aiQualifyingFinished } = useCar();
+      await startQualifying();
+      await setAiDifficulty("HARD");
+
+      for (let i = 0; i < 300; i++) runSimulationTick();
+
+      await resetRace();
+
+      expect(aiQualifyingBestLap.value).toBeNull();
+      expect(aiQualifyingFinished.value).toBe(false);
+    });
+
+    it("Normal race still finishes correctly after 10 laps despite qualifying feature", async () => {
+      const { setAiDifficulty, runSimulationTick, aiFinished, aiCurrentLap } = useCar();
+      await setAiDifficulty("HARD");
+
+      for (let i = 0; i < 1200 && !aiFinished.value; i++) {
+        runSimulationTick();
+      }
+
+      expect(aiFinished.value).toBe(true);
+      expect(aiCurrentLap.value).toBeGreaterThanOrEqual(CAR_SETTINGS.TOTAL_LAPS);
+    });
+  });
 });

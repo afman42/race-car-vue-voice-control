@@ -55,7 +55,14 @@
     />
 
     <div class="lap-banner" role="status" aria-live="polite">
-      <span v-if="pitting">{{ t("ui.pitting") }}</span>
+      <span v-if="raceMode === 'qualifying' && !raceFinished" class="quali-badge">
+        {{ t("ui.qualiMode") }} ·
+        {{ t("ui.qualiLapsRemaining", { remaining: qualifyingLapsRemaining }) }}
+      </span>
+      <span v-else-if="raceMode === 'qualifying' && raceFinished" class="quali-badge">
+        {{ t("ui.qualiMode") }} · {{ t("ui.raceComplete") }}
+      </span>
+      <span v-else-if="pitting">{{ t("ui.pitting") }}</span>
       <span v-else-if="raceFinished">{{ t("ui.raceComplete") }}</span>
       <span v-else>{{
         t("ui.lap", { lap: currentLap, total: CAR_SETTINGS.TOTAL_LAPS })
@@ -66,6 +73,27 @@
       <span class="pos-label">{{ t("ui.position") }}</span>
       <span class="pos-value">{{ positionLabel }}</span>
       <span class="pos-gap">{{ gapText }}</span>
+    </div>
+
+    <!-- Qualifying grid position overlay when session ends -->
+    <div
+      v-if="raceMode === 'qualifying' && raceFinished"
+      class="quali-grid-display"
+      role="status"
+      aria-live="assertive"
+    >
+      <span class="quali-grid-label">{{ t("ui.qualiGrid") }}</span>
+      <span class="quali-grid-pos">P{{ qualifyingPosition }}</span>
+      <div class="quali-grid-times">
+        <div class="quali-grid-row player">
+          <span class="qg-name">You</span>
+          <span class="qg-time">{{ formatLapTime(qualifyingBestLap) }}</span>
+        </div>
+        <div v-if="aiQualifyingBestLap !== null" class="quali-grid-row rival">
+          <span class="qg-name">Rival</span>
+          <span class="qg-time">{{ formatLapTime(aiQualifyingBestLap) }}</span>
+        </div>
+      </div>
     </div>
 
     <TrackMap
@@ -120,6 +148,13 @@
         <h2>{{ t("ui.drs") }}</h2>
         <p :class="['status', drsStatus ? 'on' : 'off']">
           {{ drsStatus ? t("ui.enabled") : t("ui.disabled") }}
+        </p>
+        <p
+          v-if="aiEnabled && !drsStatus"
+          class="drs-zone-indicator"
+          :class="drsEligible ? 'eligible' : 'ineligible'"
+        >
+          {{ drsEligible ? t('ui.drsEligible') : t('ui.drsNotEligible') }}
         </p>
       </div>
       <div class="display-item">
@@ -195,6 +230,38 @@
         <h2>{{ t("ui.weather") }}</h2>
         <p class="status info">{{ weather }}</p>
       </div>
+      <!-- Tire Temperature tile -->
+      <div class="display-item">
+        <h2>{{ t("ui.tireTemp") }}</h2>
+        <p
+          :class="[
+            'status',
+            tireTempDisplayStatus === 'Overheated' || tireTempDisplayStatus === 'Hot'
+              ? 'off'
+              : tireTempDisplayStatus === 'Cold'
+                ? 'info'
+                : 'on',
+          ]"
+        >
+          {{ tireTemp.toFixed(0) }}&deg;C
+        </p>
+      </div>
+      <!-- Pit Window tile -->
+      <div
+        v-if="pitWindowInfo"
+        class="display-item pit-window-tile"
+        :class="{ urgent: pitWindowUrgent }"
+      >
+        <h2>{{ t("ui.pitWindow") }}</h2>
+        <p :class="['status', pitWindowUrgent ? 'off' : 'info']">
+          <template v-if="pitWindowUrgent">
+            {{ t("ui.boxNow") }}
+          </template>
+          <template v-else>
+            {{ t("ui.pitLap", { lap: pitWindowInfo.startLap }) }}
+          </template>
+        </p>
+      </div>
       <div class="display-item">
         <h2>{{ t("ui.damage") }}</h2>
         <p
@@ -222,6 +289,14 @@
         <h2>{{ t("ui.bestLap") }}</h2>
         <p class="status info">{{ formatLapTime(bestLapTime) }}</p>
       </div>
+      <!-- Qualifying best lap tile -->
+      <div v-if="raceMode === 'qualifying'" class="display-item quali-tile">
+        <h2>{{ t("ui.qualiBestLap") }}</h2>
+        <p class="status info">
+          {{ formatLapTime(qualifyingBestLap) }}
+        </p>
+      </div>
+
       <div class="display-item" :class="{ 'ai-active': aiEnabled }">
         <h2>{{ t("ui.aiRival") }}</h2>
         <p :class="['status', aiEnabled ? 'on' : 'off']">
@@ -306,6 +381,19 @@ const {
   rivalLoopPos,
   speedKmh,
   selectedCar,
+  raceMode,
+  qualifyingLapsRemaining,
+  qualifyingBestLap,
+  qualifyingPosition,
+  qualifyingInfo,
+  aiQualifyingBestLap,
+  aiQualifyingFinished,
+  tireTemp,
+  tireTempDisplayStatus,
+  drsEligible,
+  pitWindowInfo,
+  pitWindowVisible,
+  pitWindowUrgent,
   formatLapTime,
   t,
   locale,
@@ -330,372 +418,4 @@ const {
 } = useRaceControl();
 </script>
 
-<style scoped>
-.race-control-panel {
-  font-family: "Orbitron", sans-serif;
-  background-color: #1e1e1e;
-  color: #e0e0e0;
-  margin: 1rem auto;
-  padding: 1.5rem;
-  border-radius: 15px;
-  border: 2px solid #444;
-  box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
-  width: 90%;
-  max-width: 500px;
-  box-sizing: border-box;
-}
-
-h1 {
-  color: #00ffff;
-  text-align: center;
-  text-transform: uppercase;
-  font-size: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.header-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-.header-row h1 {
-  margin-bottom: 0;
-  flex: 1;
-}
-.lang-select select {
-  font-family: "Orbitron", sans-serif;
-  background-color: #2a2a2a;
-  color: #00ffff;
-  border: 1px solid #444;
-  border-radius: 6px;
-  padding: 4px 6px;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.status-panel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 1.5rem;
-}
-.light {
-  width: 20px;
-  height: 20px;
-  background-color: #ff4136;
-  border-radius: 50%;
-  transition: background-color 0.3s;
-}
-.light.active {
-  background-color: #2ecc40;
-  box-shadow: 0 0 10px #2ecc40;
-}
-.status-text {
-  font-size: 1rem;
-  font-weight: bold;
-}
-
-.control-button {
-  display: block;
-  width: 100%;
-  padding: 12px;
-  font-size: 1rem;
-  color: #1e1e1e;
-  background-color: #00ffff;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-bottom: 2rem;
-  transition:
-    background-color 0.3s,
-    box-shadow 0.3s;
-}
-
-.car-select-button {
-  display: block;
-  width: 100%;
-  padding: 10px;
-  font-size: 0.9rem;
-  font-family: "Orbitron", sans-serif;
-  color: #00ffff;
-  background-color: #2a2a2a;
-  border: 1px solid #00ffff;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-bottom: 1.5rem;
-  transition: background-color 0.2s, opacity 0.2s;
-}
-.car-select-button:hover:not(:disabled) {
-  background-color: #333;
-  box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
-}
-.car-select-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.dashboard {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 1rem;
-  text-align: center;
-}
-
-.display-item h2 {
-  color: #aaa;
-  font-size: 0.9rem;
-  text-transform: uppercase;
-  margin-bottom: 0.5rem;
-}
-.display-item .status {
-  font-size: 1.5rem;
-  font-weight: bold;
-}
-.status.on {
-  color: #2ecc40;
-}
-.status.off {
-  color: #ff4136;
-}
-.status.info {
-  color: #ffdc00;
-}
-
-.countdown-bar {
-  margin-top: 0.5rem;
-  width: 100%;
-  height: 6px;
-  background-color: #333;
-  border-radius: 3px;
-  overflow: hidden;
-}
-.countdown-fill {
-  height: 100%;
-  background-color: #00ffff;
-  border-radius: 3px;
-  transition: width 0.1s linear;
-}
-
-.unit-label {
-  font-size: 0.6rem;
-  color: #888;
-  font-weight: normal;
-  vertical-align: super;
-}
-.lap-time {
-  font-family: monospace;
-}
-
-.lap-banner {
-  text-align: center;
-  font-weight: bold;
-  font-size: 1.1rem;
-  color: #00ffff;
-  letter-spacing: 1px;
-  margin-bottom: 1.5rem;
-}
-
-.position-badge {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-.position-badge .pos-label {
-  color: #aaa;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-}
-.position-badge .pos-value {
-  color: #00ffff;
-  font-size: 1.6rem;
-  font-weight: bold;
-}
-.position-badge .pos-gap {
-  color: #ffdc00;
-  font-size: 0.9rem;
-  font-family: monospace;
-}
-
-.segment-display {
-  grid-column: span 1;
-}
-.segment-badge {
-  display: inline-block;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: bold;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-.segment-badge.straight {
-  color: #111;
-  background-color: #2ecc40;
-}
-.segment-badge.corner.speed-slow {
-  color: #fff;
-  background-color: #ff4136;
-}
-.segment-badge.corner.speed-medium {
-  color: #111;
-  background-color: #ffdc00;
-}
-.segment-badge.corner.speed-fast {
-  color: #111;
-  background-color: #ff851b;
-}
-
-.gear-display {
-  grid-column: span 1;
-}
-.gear-indicator {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 0.25rem;
-}
-.gear-number {
-  font-size: 2.4rem;
-  font-weight: bold;
-  line-height: 1;
-  transition:
-    color 0.15s,
-    transform 0.15s;
-}
-.gear-number.engaged {
-  color: #00ffff;
-}
-.gear-number.neutral {
-  color: #ff4136;
-}
-.gear-indicator.shifting .gear-number {
-  color: #ffdc00;
-  transform: scale(1.3);
-}
-
-.shift-lights {
-  display: flex;
-  justify-content: center;
-  gap: 4px;
-  margin-top: 0.3rem;
-}
-.shift-led {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background-color: #333;
-  transition:
-    background-color 0.2s,
-    box-shadow 0.2s;
-}
-.shift-led.active {
-  background-color: #2ecc40;
-  box-shadow: 0 0 6px #2ecc40;
-}
-.shift-led.active:nth-child(4),
-.shift-led.active:nth-child(5) {
-  background-color: #ffdc00;
-  box-shadow: 0 0 6px #ffdc00;
-}
-.shift-led.blink {
-  animation: led-blink 0.15s ease-in-out 3;
-}
-.shift-led.shift {
-  background-color: #ff4136;
-  box-shadow: 0 0 8px #ff4136;
-  animation: led-blink 0.1s ease-in-out 4;
-}
-@keyframes led-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-.display-item.ai-active {
-  border: 1px solid #ff851b;
-  border-radius: 8px;
-  padding: 0.3rem;
-  background: rgba(255, 133, 27, 0.08);
-}
-
-.car-tile {
-  border: 1px solid #444;
-  border-radius: 8px;
-  padding: 0.3rem;
-}
-
-.ai-sub {
-  display: block;
-  font-size: 0.7rem;
-  color: #aaa;
-  font-weight: normal;
-  margin-top: 0.2rem;
-}
-
-.transcript-log {
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid #444;
-  color: #888;
-}
-.transcript-log p {
-  font-family: monospace;
-  font-style: italic;
-  background-color: #2a2a2a;
-  padding: 0.5rem;
-  border-radius: 4px;
-}
-
-@media (min-width: 768px) {
-  .race-control-panel {
-    padding: 2rem;
-    max-width: 600px;
-  }
-  h1 {
-    font-size: 2rem;
-  }
-  .status-text {
-    font-size: 1.2rem;
-  }
-  .control-button {
-    padding: 15px;
-    font-size: 1.2rem;
-  }
-  .dashboard {
-    gap: 1.5rem;
-  }
-}
-
-@media (min-width: 1024px) {
-  .race-control-panel {
-    max-width: 700px;
-  }
-  .display-item .status {
-    font-size: 1.8rem;
-  }
-}
-
-.control-button:hover:not(:disabled) {
-  background-color: #39cccc;
-  box-shadow: 0 0 15px #00ffff;
-}
-.control-button:disabled {
-  background-color: #555;
-  cursor: not-allowed;
-}
-</style>
+<style src="./RaceControl.css" scoped></style>

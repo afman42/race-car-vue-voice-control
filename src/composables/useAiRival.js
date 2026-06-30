@@ -1,7 +1,7 @@
 // src/composables/useAiRival.js
 
 import { ref, computed } from "vue";
-import { CAR_SETTINGS, AI_DIFFICULTY } from "@/config";
+import { CAR_SETTINGS, AI_DIFFICULTY, QUALIFYING } from "@/config";
 import ttsService from "@/services/textToSpeechService";
 import { t } from "@/i18n";
 import { formatLapTime } from "@/utils/formatLapTime";
@@ -23,6 +23,12 @@ const currentLapTime = ref(0); // ms accrued into the current lap
 const bestLapTime = ref(null);
 const leaderboard = ref([]); // { lap, time } sorted fastest-first
 const finished = ref(false);
+
+// Qualifying mode state
+const isQualifyingMode = ref(false);
+const qualifyingBestLap = ref(null);
+const qualifyingResults = ref([]);
+const qualifyingFinished = ref(false);
 
 // Resolve the active difficulty config from its display label.
 const config = computed(
@@ -60,20 +66,40 @@ const resetProgress = () => {
   bestLapTime.value = null;
   leaderboard.value = [];
   finished.value = false;
+  isQualifyingMode.value = false;
+  qualifyingBestLap.value = null;
+  qualifyingResults.value = [];
+  qualifyingFinished.value = false;
 };
 
 // Advance the rival one simulation tick. It accrues ms toward the current lap
 // target; on reaching the target it banks the lap and rolls a new target.
 const tick = () => {
-  if (!enabled.value || finished.value) return;
+  if (!enabled.value || finished.value || qualifyingFinished.value) return;
   if (lapTarget.value <= 0) lapTarget.value = nextLapTarget();
 
   currentLapTime.value += CAR_SETTINGS.LAP_TIME_PER_TICK_MS;
   lapProgress.value = Math.min(1, currentLapTime.value / lapTarget.value);
 
-  while (currentLapTime.value >= lapTarget.value && !finished.value) {
+  while (currentLapTime.value >= lapTarget.value && !finished.value && !qualifyingFinished.value) {
     recordLap(currentLap.value, lapTarget.value);
-    currentLapTime.value -= lapTarget.value;
+
+    // Track qualifying results for AI (only during qualifying mode)
+    if (isQualifyingMode.value) {
+      const time = Math.round(lapTarget.value);
+      if (qualifyingBestLap.value === null || time < qualifyingBestLap.value) {
+        qualifyingBestLap.value = time;
+      }
+      qualifyingResults.value.push({ lap: currentLap.value, time });
+
+      // Check qualifying end (3 laps)
+      if (qualifyingResults.value.length >= QUALIFYING.LAPS) {
+        qualifyingFinished.value = true;
+        lapProgress.value = 0;
+        return;
+      }
+    }
+
     if (currentLap.value >= CAR_SETTINGS.TOTAL_LAPS) {
       finished.value = true;
       lapProgress.value = 1;
@@ -106,7 +132,10 @@ const setDifficulty = async (level) => {
   // Reset progress BEFORE enabling so the simulation watcher sees
   // finished=false before enabled=true, avoiding a race where the
   // watcher runs mid-transition and skips starting the sim.
+  // Preserve qualifying mode flag so changing difficulty mid-qualifying works.
+  const wasQualifyingMode = isQualifyingMode.value;
   resetProgress();
+  isQualifyingMode.value = wasQualifyingMode;
   difficulty.value = AI_DIFFICULTY[resolvedKey].label;
   enabled.value = true;
 
@@ -152,6 +181,16 @@ const getStatus = async () => {
   return message;
 };
 
+// Enable or disable qualifying mode for the AI rival.
+const setQualifyingMode = (active) => {
+  isQualifyingMode.value = active;
+  if (!active) {
+    qualifyingBestLap.value = null;
+    qualifyingResults.value = [];
+    qualifyingFinished.value = false;
+  }
+};
+
 /**
  * AI rival composable. Returns the shared singleton rival state and actions.
  */
@@ -165,6 +204,10 @@ export function useAiRival() {
     bestLapTime,
     leaderboard,
     finished,
+    // Qualifying
+    qualifyingBestLap,
+    qualifyingResults,
+    qualifyingFinished,
     // Getters
     config,
     // Actions
@@ -173,5 +216,6 @@ export function useAiRival() {
     disable,
     resetProgress,
     getStatus,
+    setQualifyingMode,
   };
 }

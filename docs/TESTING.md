@@ -2,99 +2,153 @@
 
 The project runs two test suites: **unit tests** (Vitest) and **end-to-end tests** (Playwright).
 
+> **Current counts:** 236 unit tests (11 files) + 67 e2e tests (2 files) = **303 total tests**
+
 ---
 
 ## Quick Commands
 
 ```bash
-pnpm test:run         # Unit tests (Vitest, single run) — 204 tests
+pnpm test:run         # Unit tests (single run) — 236 tests
 pnpm test             # Unit tests in watch mode
-pnpm test:ui          # Vitest UI dashboard
-pnpm test:e2e         # E2E tests (Playwright) — 67 tests total
-pnpm test:e2e:ui      # Playwright UI mode (interactive debug)
+pnpm test:ui          # Vitest UI dashboard (interactive)
+pnpm test:e2e         # E2E tests — 67 tests (auto-starts dev server)
 ```
 
-> **E2E tests require the dev server to be running** — Playwright auto-starts it via `webServer` config.
-
 ---
 
-## Unit Tests — Vitest (204 tests across 11 files)
+## Test File Map
 
-### Core Composable Tests
-
-| Test File | Tests | What It Covers |
-|---|---|---|
-| `useCar.spec.js` | 22 | Engine start/stop, DRS toggle, overtake activation (incl. already-active guard), fuel mix switching, pit stop (incl. race-finished guard), car selection edge cases |
-| `useCarFeatures.spec.js` | 16 | Tire compound changes (pit-only enforcement), ERS mode switching, engine temperature, lap timer, help command, race reset |
-| `useCarSimulation.spec.js` | 20 | Fuel consumption at different RPMs, battery recharge, tire wear, engine stall, autoShift edge cases (neutral, safety downshift, corner downshift, below-shift threshold), overheat recovery, pitting guard, fuel/tire floor |
-| `useCarRaceFeatures.spec.js` | 22 | Lap timing and completion, fastest-lap leaderboard (sorting, capping), weather effects on grip and wear, damage accrual and pace penalty |
-| `useCarAiRival.spec.js` | 15 | AI difficulty levels, lap generation, leaderboard sorting/capping, status query (with and without laps), disable, reset |
-| `useCarStandings.spec.js` | 7 | Race standings computation, position callout, track-loop position, solo vs. rival scenarios |
-
-### Utility Tests
+### Unit Tests — Vitest (236 tests, 11 files)
 
 | Test File | Tests | What It Covers |
 |---|---|---|
-| `raceStanding.spec.js` | 15 | `totalProgress` (normal and edge cases), `loopPosition` wrapping, `computeStandings` (ahead, behind, tie, solo), `formatPosition` |
-| `formatLapTime.spec.js` | 4 | M:SS.mmm formatting, null/undefined placeholder, rounding, sub-minute zero-padding |
+| `src/composables/useCar.spec.js` | 22 | Engine, DRS, overtake, fuel mix, tire status, pit stop, car selection, qualifying |
+| `src/composables/useCarFeatures.spec.js` | 16 | Tire compounds, ERS modes, engine temperature, lap timer, help, reset |
+| `src/composables/useCarSimulation.spec.js` | 20 | Fuel consumption, tire wear, battery recharge, autoShift, stall, overheat, pitting guard |
+| `src/composables/useCarRaceFeatures.spec.js` | 22 | Lap timing, leaderboard, weather effects, weather shifts, damage |
+| `src/composables/useCarAiRival.spec.js` | 15 | AI difficulty, lap generation, leaderboard, status query, qualifying mode |
+| `src/composables/useCarStandings.spec.js` | 7 | Race standings, position callout, track position, solo vs. rival |
+| `src/composables/useCarCarSelect.spec.js` | 11 | Car selection, stat comparisons (fuel, wear, corner speed, straight speed) |
+| `src/composables/commandRouter.spec.js` | 33 | Exact matching, fuzzy matching, locale-specific, rejection, Levenshtein |
+| `src/components/RaceControl.spec.js` | 30 | Dashboard render, voice/manual commands, segment display, car modal, standings |
+| `src/utils/raceStanding.spec.js` | 15 | totalProgress, loopPosition, computeStandings, formatPosition |
+| `src/utils/formatLapTime.spec.js` | 4 | Lap time formatting, null/undefined, rounding |
 
-### Routing & Component Tests
+### E2E Tests — Playwright (67 tests, 2 files)
 
 | Test File | Tests | What It Covers |
 |---|---|---|
-| `commandRouter.spec.js` | 33 | Exact keyword matching, false-positive rejection (short strings), locale-specific matching, fuzzy (Levenshtein) matching with tolerance |
-| `RaceControl.spec.js` | 30 | Dashboard render, radio toggle, voice/manual command execution, AI controls, race standings, track segments, gear flash animation, segment wrapping, runCommand edge cases (null/undefined), unmount cleanup |
-
----
-
-## E2E Tests — Playwright (67 tests across 2 files)
-
-| Test File | Tests | What It Covers |
-|---|---|---|
-| `race-control.spec.js` | 28 | Initial state, engine & gear simulation, AI difficulty buttons, DRS/overtake, weather, fuel/ERS/tires, status queries, language switch, track map, manual controls, reset, full race flow |
-| `race-app.spec.js` | 39 | Initial state, engine & gears, AI rival difficulty, manual controls (all subsystems), language toggle, lap timing & leaderboard, weather cycling, status commands, race progression (incl. race-completion freeze), reset, AI gap tracking |
-
-### E2E Test Patterns
-
-- All tests start fresh via `page.goto("/")` (no `beforeEach` in `race-app.spec.js`, one in `race-control.spec.js`)
-- Assertions use Playwright's auto-retrying matchers (`toBeVisible`, `toContainText`, etc.)
-- Tests that depend on simulation time (gear shifts, lap completion) use generous timeouts and `test.setTimeout()` when needed
-- Button clicks use `page.getByRole("button", { name: "Exact Text" })` for precision
-- Dashboard tiles are selected via `.display-item` filter locators to avoid strict-mode ambiguity
+| `e2e/race-control.spec.js` | 28 | Dashboard state, engine/gears, AI difficulty, DRS/overtake, weather, fuel/ERS/tires, status queries, language switch, track map, reset, full race flow |
+| `e2e/race-app.spec.js` | 39 | Initial state, engine/gears, AI rival, manual controls, language toggle, lap timing, leaderboard, weather cycling, status commands, race progression, reset, AI gap tracking |
 
 ---
 
 ## Testing Patterns
 
-### Singleton State Reset
+### 1. Singleton State Reset
 
 Because `useCar` and `useAiRival` use module-level state (singleton pattern), tests must manually reset state between runs:
 
 ```js
-const { resetRace, disableAi, aiEnabled } = useCar();
-await resetRace();
-if (aiEnabled.value) await disableAi();
+import { useCar } from "./useCar";
+
+beforeEach(async () => {
+  const { resetRace, disableAi, aiEnabled } = useCar();
+  await resetRace();
+  if (aiEnabled.value) await disableAi();
+  vi.clearAllMocks();
+});
 ```
 
-### Simulation Edge Cases
+### 2. Simulation Ticks Without Waiting
 
-To test simulation ticks without waiting 250ms, the `runSimulationTick` function is exposed and called directly:
+The `runSimulationTick` function is exposed for direct calls — no need to wait for 250ms intervals:
 
 ```js
 const { runSimulationTick, fuelLevel } = useCar();
-await startEngine();
-// Fast-forward fuel consumption
+engineStatus.value = true;
+rpm.value = CAR_SETTINGS.RPM_MAX;
+
 for (let i = 0; i < 10; i++) runSimulationTick();
 expect(fuelLevel.value).toBeLessThan(100);
 ```
 
-### Command Router
+### 3. Command Router as Pure Function
 
-Command matching is tested as a pure function — no Vue reactivity needed:
+Command matching is tested as pure functions — no Vue reactivity needed:
 
 ```js
-import { matchCommand } from '@/composables/commandRouter';
+import { matchCommand } from "@/composables/commandRouter";
+
 expect(matchCommand("start engine")).toBe("startEngine");
 expect(matchCommand("start engin")).toBe("startEngine"); // fuzzy match
 expect(matchCommand("xyzzy")).toBeNull();
 ```
+
+### 4. Mocked Audio Services
+
+Both `audioService` and `textToSpeechService` are globally mocked in `vitest.setup.js`. Tests can assert on mock calls:
+
+```js
+expect(audioService.playSound).toHaveBeenCalledWith("engineStart");
+expect(ttsService.speak).toHaveBeenCalledWith("Engine started.");
+```
+
+### 5. Speech Recognition Capture
+
+Component tests capture the speech callback to simulate voice commands:
+
+```js
+let capturedOnResult = null;
+
+vi.mock("@/services/speechRecognitionService", () => ({
+  default: {
+    startListening: vi.fn((onResult) => {
+      capturedOnResult = onResult;
+      return true;
+    }),
+    // ...
+  },
+}));
+
+// Simulate a voice command:
+await wrapper.get(".control-button").trigger("click");
+await capturedOnResult("start engine");
+```
+
+### 6. E2E Test Patterns
+
+- All tests start with a fresh `page.goto("/")`
+- Assertions use Playwright's auto-retrying matchers (`toBeVisible`, `toContainText`)
+- Button clicks use `page.getByRole("button", { name: "Exact Text" })` for precision
+- Dashboard tiles selected via `.display-item` filter locators
+- Tests depending on simulation time use generous timeouts and `test.setTimeout()`
+
+---
+
+## Running Specific Tests
+
+```bash
+# Run a single test file
+npx vitest run src/composables/useCar.spec.js
+
+# Run tests matching a pattern
+npx vitest run --reporter verbose -t "DRS"
+
+# Run a single e2e test file
+npx playwright test e2e/race-control.spec.js --reporter list
+
+# Run e2e tests with visible browser
+npx playwright test --headed
+```
+
+---
+
+## Writing New Tests
+
+1. **Unit tests:** Follow the singleton reset pattern in `beforeEach`
+2. **Composable tests:** Import `useCar()`, modify state directly, call actions, assert results
+3. **Component tests:** Mount `RaceControl.vue`, use captured speech callback
+4. **Utility tests:** Pure functions — no setup needed
+5. **E2E tests:** Add to existing spec files or create new ones in `e2e/`

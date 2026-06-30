@@ -310,7 +310,7 @@ test.describe("Race Car Voice Control — E2E", () => {
       await page.waitForTimeout(500);
       await expect(statusText).toContainText(/\d+ degrees/i);
 
-      await page.getByRole("button", { name: "Best Lap" }).click();
+      await page.getByRole("button", { name: "Best Lap", exact: true }).click();
       await page.waitForTimeout(500);
       await expect(statusText).toContainText(/--:--|best|No lap/i);
     });

@@ -12,6 +12,11 @@ import {
   CAR_SETTINGS,
   TIRE_COMPOUNDS,
   WEATHER_CONDITIONS,
+  QUALIFYING,
+  WEATHER_SHIFT,
+  TIRE_TEMP,
+  DRS_DETECTION,
+  PIT_WINDOW,
 } from "@/config";
 import engineAudioService from "@/services/engineAudioService";
 import ttsService from "@/services/textToSpeechService";
@@ -22,9 +27,13 @@ import {
   currentGear,
   currentSegmentIndex,
   drsStatus,
+  drsEligible,
   overtakeActive,
   overheating,
   tireLife,
+  tireTemp,
+  tireTempStatus,
+  tireTempWarned,
   fuelLevel,
   batteryLevel,
   engineTemp,
@@ -44,6 +53,8 @@ import {
   overheatWarned,
   damageWarned,
   findSegmentAtProgress,
+  sectorAtProgress,
+  computeTireTempStatus,
   fuelMix,
   compoundConfig,
   ersConfig,
@@ -52,7 +63,29 @@ import {
   clearOvertakeTimeout,
   setLastSegmentIndex,
   paceFactor,
+  // Sector timing state
+  currentSector,
+  sectorTimes,
+  bestSectorTimes,
+  lastSectorTimes,
+  // Qualifying state
+  raceMode,
+  qualifyingLapsRemaining,
+  qualifyingResults,
+  qualifyingBestLap,
+  // Weather shift state
+  nextWeather,
+  weatherChangeLap,
+  weatherChangeAnnounced,
+  weather,
+  // Pit window state
+  pitWindowStart,
+  pitWindowVisible,
+  pitWindowUrgent,
 } from "./useCarState";
+
+// Pit urgent warning latch (local to this module)
+let pitUrgentWarned = false;
 
 // --- TRACK-AWARE GEAR LOGIC ---
 const getTargetGearForSegment = (seg) => {
@@ -119,6 +152,32 @@ const recordLap = (lapNumber, timeMs) => {
   const next = [...leaderboard.value, { lap: lapNumber, time }];
   next.sort((a, b) => a.time - b.time);
   leaderboard.value = next.slice(0, CAR_SETTINGS.LEADERBOARD_SIZE);
+
+  // Track qualifying results
+  if (raceMode.value === "qualifying") {
+    if (qualifyingBestLap.value === null || time < qualifyingBestLap.value) {
+      qualifyingBestLap.value = time;
+    }
+    qualifyingResults.value.push({ lap: lapNumber, time });
+    qualifyingLapsRemaining.value = Math.max(0, QUALIFYING.LAPS - qualifyingResults.value.length);
+  }
+};
+
+// --- SECTOR TIMING ---
+const updateSectorTiming = () => {
+  const prevSector = currentSector.value;
+  const newSector = sectorAtProgress(lapProgress.value);
+  if (newSector !== prevSector) {
+    const sectorIdx = prevSector - 1;
+    const prevSectorsSum = sectorTimes.value.slice(0, sectorIdx).reduce((a, b) => a + b, 0);
+    const sectorTime = currentLapTime.value - prevSectorsSum;
+    sectorTimes.value[sectorIdx] = sectorTime;
+    if (bestSectorTimes.value[sectorIdx] === null || sectorTime < bestSectorTimes.value[sectorIdx]) {
+      bestSectorTimes.value[sectorIdx] = sectorTime;
+    }
+    lastSectorTimes.value[sectorIdx] = sectorTime;
+    currentSector.value = newSector;
+  }
 };
 
 // --- LAP PROGRESS ---
@@ -127,6 +186,14 @@ const updateLapProgress = (ratio) => {
 
   currentLapTime.value += CAR_SETTINGS.LAP_TIME_PER_TICK_MS;
 
+  // Tire temperature grip factor
+  const tireGripFactor = (() => {
+    if (tireTemp.value < TIRE_TEMP.COLD_THRESHOLD) return TIRE_TEMP.GRIP_COLD_FACTOR;
+    if (tireTemp.value <= TIRE_TEMP.OPTIMAL_MAX) return TIRE_TEMP.GRIP_OPTIMAL_FACTOR;
+    if (tireTemp.value <= TIRE_TEMP.CRITICAL_TEMP) return TIRE_TEMP.GRIP_HOT_FACTOR;
+    return TIRE_TEMP.GRIP_COLD_FACTOR;
+  })();
+
   const gearRatio = currentGear.value > 0
     ? (CAR_SETTINGS.GEAR_RATIOS[currentGear.value] || 0.5)
     : 0;
@@ -134,12 +201,13 @@ const updateLapProgress = (ratio) => {
     effectiveStats.value.lapProgressBase *
     (0.3 + ratio * gearRatio) *
     weatherConfig().gripFactor *
-    paceFactor.value;
+    paceFactor.value *
+    tireGripFactor;
 
   const startSeg = findSegmentAtProgress(lapProgress.value);
   const startCornerFactor =
     startSeg.segment.type === "corner"
-      ? effectiveStats.value.cornerSpeedCap
+      ? effectiveStats.value.cornerSpeedCap * tireGripFactor
       : 1.0;
 
   const drsBoost =
@@ -157,12 +225,44 @@ const updateLapProgress = (ratio) => {
     lapProgress.value = beforeProgress + rawSpeed * endCornerFactor;
   }
 
+  // Update sector timing on progress change
+  updateSectorTiming();
+
   while (lapProgress.value >= CAR_SETTINGS.LAP_DISTANCE) {
+    // Record final sector time for this lap
+    const lastSectorIdx = currentSector.value - 1;
+    const sectorTime = currentLapTime.value - sectorTimes.value.slice(0, lastSectorIdx).reduce((a, b) => a + b, 0);
+    sectorTimes.value[lastSectorIdx] = sectorTime;
+    if (bestSectorTimes.value[lastSectorIdx] === null || sectorTime < bestSectorTimes.value[lastSectorIdx]) {
+      bestSectorTimes.value[lastSectorIdx] = sectorTime;
+    }
+    lastSectorTimes.value[lastSectorIdx] = sectorTime;
+
     lapProgress.value -= CAR_SETTINGS.LAP_DISTANCE;
     if (currentLapTime.value > 0) {
       recordLap(currentLap.value, currentLapTime.value);
     }
     currentLapTime.value = 0;
+    // Reset sector timing for new lap
+    sectorTimes.value = [0, 0, 0];
+    currentSector.value = 1;
+    // Clear DRS eligibility at start/finish
+    drsEligible.value = false;
+    // Check for qualifying session end (3 laps completed)
+    if (raceMode.value === "qualifying" && qualifyingLapsRemaining.value <= 0) {
+      raceFinished.value = true;
+      lapProgress.value = 0;
+      engineStatus.value = false;
+      rpm.value = 0;
+      currentGear.value = 0;
+      drsStatus.value = false;
+      overtakeActive.value = false;
+      clearOvertakeTimeout();
+      engineAudioService.stop();
+      ttsService.speak(t("msg.qualiComplete"));
+      return;
+    }
+
     if (currentLap.value >= CAR_SETTINGS.TOTAL_LAPS) {
       raceFinished.value = true;
       lapProgress.value = 0;
@@ -194,6 +294,158 @@ const updateTemperature = (ratio) => {
   );
 };
 
+// --- TIRE TEMPERATURE ---
+const updateTireTemperature = (ratio) => {
+  let next = tireTemp.value;
+  if (engineStatus.value && ratio > 0.1) {
+    // Heat up while driving
+    next += TIRE_TEMP.HEAT_RATE * ratio;
+  } else {
+    // Cool down while coasting/stopped
+    next -= TIRE_TEMP.COOL_RATE;
+  }
+  // Ambient drift toward baseline
+  if (next > TIRE_TEMP.BASELINE) next -= TIRE_TEMP.AMBIENT_COOL;
+  else if (next < TIRE_TEMP.BASELINE) next += TIRE_TEMP.AMBIENT_COOL;
+  // Weather bias: wet/storm cools tires, dry heat builds
+  next += weatherConfig().tempBias * 0.3;
+  // Clamp
+  next = Math.max(20, Math.min(TIRE_TEMP.CRITICAL_TEMP + 20, next));
+  tireTemp.value = parseFloat(next.toFixed(1));
+  tireTempStatus.value = computeTireTempStatus(tireTemp.value);
+
+  // Tire temp warning (only once per crossing into critical)
+  if (tireTemp.value >= TIRE_TEMP.CRITICAL_TEMP && !tireTempWarned.value) {
+    tireTempWarned.value = true;
+    ttsService.speak(t("msg.warnTireTemp"));
+  } else if (tireTemp.value < TIRE_TEMP.CRITICAL_TEMP) {
+    tireTempWarned.value = false;
+  }
+};
+
+// --- DRS ELIGIBILITY ---
+// Check if the player is in the DRS detection zone and close enough to the
+// AI rival. Sets drsEligible so the DRS activation button will work.
+const updateDrsEligibility = () => {
+  if (!ai.enabled.value || !engineStatus.value) {
+    drsEligible.value = false;
+    return;
+  }
+
+  // Find which segment we're currently in
+  const seg = findSegmentAtProgress(lapProgress.value);
+
+  if (seg.index === DRS_DETECTION.DETECTION_SEGMENT) {
+    // We're on the DRS detection segment. Check gap to rival.
+    const playerProg = (currentLap.value - 1) + (lapProgress.value / CAR_SETTINGS.LAP_DISTANCE);
+    const rivalProg = (ai.currentLap.value - 1) + ai.lapProgress.value;
+    const gap = playerProg - rivalProg;
+
+    // DRS works when trailing (behind) the rival, within threshold
+    if (gap < 0 && Math.abs(gap) <= DRS_DETECTION.ELIGIBILITY_GAP_LAPS) {
+      drsEligible.value = true;
+    }
+  } else if (drsEligible.value) {
+    // Clear DRS eligibility when exiting the detection segment
+    drsEligible.value = false;
+  }
+};
+
+// --- PIT WINDOW STRATEGY ---
+// Project tire-wear and fuel-consumption rates to recommend the optimal
+// pit-stop lap. Updates reactive state the UI reads.
+const updatePitWindow = () => {
+  if (raceFinished.value || raceMode.value === "qualifying") {
+    pitWindowVisible.value = false;
+    return;
+  }
+
+  // Estimate wear per lap from current simulation rates
+  const ratio = normalizedRpmRatio();
+  const wearPerTick =
+    effectiveStats.value.tireWearRate *
+    (1 + ratio) *
+    compoundConfig().wearFactor *
+    weatherConfig().wearFactor;
+  const ticksPerLap = CAR_SETTINGS.LAP_DISTANCE / (CAR_SETTINGS.LAP_PROGRESS_BASE * 0.8);
+  const wearPerLap = wearPerTick * ticksPerLap;
+  const lapsOfTireLifeRemaining = wearPerLap > 0 ? tireLife.value / wearPerLap : 99;
+
+  // Estimate fuel per lap
+  const baseConsumptionRate =
+    effectiveStats.value.fuelRate[fuelMix.value.toUpperCase()] ||
+    effectiveStats.value.fuelRate.STANDARD;
+  const rpmMultiplier =
+    CAR_SETTINGS.RPM_MULTIPLIER_MIN +
+    ratio * (CAR_SETTINGS.RPM_MULTIPLIER_MAX - CAR_SETTINGS.RPM_MULTIPLIER_MIN);
+  const fuelPerTick = baseConsumptionRate * rpmMultiplier;
+  const fuelPerLap = fuelPerTick * ticksPerLap;
+  const lapsOfFuelRemaining = fuelPerLap > 0 ? fuelLevel.value / fuelPerLap : 99;
+
+  const limitingLaps = Math.min(lapsOfTireLifeRemaining, lapsOfFuelRemaining);
+  const currentLapNumber = currentLap.value;
+
+  if (limitingLaps <= PIT_WINDOW.SHOW_WINDOW_LAPS && !raceFinished.value) {
+    pitWindowVisible.value = true;
+    pitWindowStart.value = currentLapNumber + Math.max(0, Math.ceil(limitingLaps - PIT_WINDOW.SUGGEST_AHEAD_LAPS));
+    pitWindowUrgent.value = limitingLaps <= PIT_WINDOW.URGENT_LAPS_REMAINING;
+
+    // "Box now" TTS announcement (once per transition)
+    if (pitWindowUrgent.value && !pitUrgentWarned) {
+      pitUrgentWarned = true;
+      ttsService.speak(t("msg.pitWindowUrgent", { lap: pitWindowStart.value }));
+    }
+  } else {
+    pitWindowVisible.value = false;
+    pitWindowStart.value = null;
+    pitWindowUrgent.value = false;
+    pitUrgentWarned = false;
+  }
+};
+
+// --- WEATHER SHIFT ---
+const checkWeatherShift = () => {
+  if (!WEATHER_SHIFT.ENABLED) return;
+  if (nextWeather.value === null || weatherChangeLap.value === 0) return;
+  if (raceMode.value === "qualifying") return; // No weather shifts in qualifying
+
+  // Announce weather change FORECAST_LAPS laps in advance (only once)
+  if (!weatherChangeAnnounced.value && currentLap.value >= weatherChangeLap.value - WEATHER_SHIFT.FORECAST_LAPS) {
+    weatherChangeAnnounced.value = true;
+    ttsService.speak(t("msg.weatherChangeAnnounce", { weather: nextWeather.value }));
+  }
+
+  // Apply weather change
+  if (currentLap.value >= weatherChangeLap.value) {
+    weather.value = nextWeather.value;
+    nextWeather.value = null;
+    weatherChangeLap.value = 0;
+    ttsService.speak(t("msg.weatherChanged", { weather: weather.value }));
+  }
+};
+
+// Schedule a random weather shift: pick a lap and a different condition.
+// Exported so useCar.js can call it when the race simulation starts.
+export const scheduleWeatherShift = () => {
+  if (!WEATHER_SHIFT.ENABLED || raceMode.value === "qualifying") return;
+
+  const changeLap = Math.floor(
+    Math.random() * (WEATHER_SHIFT.CHANGE_LAP_MAX - WEATHER_SHIFT.CHANGE_LAP_MIN + 1)
+  ) + WEATHER_SHIFT.CHANGE_LAP_MIN;
+
+  // Pick a different weather condition (not the current one)
+  const conditions = Object.values(WEATHER_CONDITIONS);
+  const currentIdx = conditions.findIndex((c) => c.label === weather.value);
+  let nextIdx;
+  do {
+    nextIdx = Math.floor(Math.random() * conditions.length);
+  } while (nextIdx === currentIdx && conditions.length > 1);
+
+  nextWeather.value = conditions[nextIdx].label;
+  weatherChangeLap.value = changeLap;
+  weatherChangeAnnounced.value = false;
+};
+
 // --- DAMAGE ---
 const updateDamage = () => {
   let added = 0;
@@ -202,6 +454,10 @@ const updateDamage = () => {
   }
   if (tireLife.value <= 0) {
     added += CAR_SETTINGS.DAMAGE_WORN_TIRE_RATE;
+  }
+  // Overheated tires stress suspension/components
+  if (tireTemp.value >= TIRE_TEMP.CRITICAL_TEMP) {
+    added += CAR_SETTINGS.DAMAGE_OVERHEAT_RATE * 0.3;
   }
   if (added > 0) {
     carDamage.value = parseFloat(
@@ -288,13 +544,19 @@ export const runSimulationTick = () => {
     );
   }
 
-  // Tire wear.
+  // Tire wear (with tire temperature multiplier).
   if (tireLife.value > 0) {
+    const tireWearTempFactor = (() => {
+      if (tireTemp.value < TIRE_TEMP.COLD_THRESHOLD) return TIRE_TEMP.WEAR_COLD_FACTOR;
+      if (tireTemp.value <= TIRE_TEMP.OPTIMAL_MAX) return 1.0;
+      return TIRE_TEMP.WEAR_HOT_FACTOR;
+    })();
     const wear =
       effectiveStats.value.tireWearRate *
       (1 + ratio) *
       compoundConfig().wearFactor *
-      weatherConfig().wearFactor;
+      weatherConfig().wearFactor *
+      tireWearTempFactor;
     tireLife.value = parseFloat(
       Math.max(0, tireLife.value - wear).toFixed(2),
     );
@@ -310,8 +572,12 @@ export const runSimulationTick = () => {
   }
 
   updateTemperature(ratio);
+  updateTireTemperature(ratio);
   updateDamage();
   updateLapProgress(ratio);
+  checkWeatherShift();
+  updateDrsEligibility();
+  updatePitWindow();
   ai.tick();
   checkWarnings();
 

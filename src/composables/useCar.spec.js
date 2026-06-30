@@ -1,8 +1,8 @@
 // src/composables/useCar.spec.js
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useCar } from "./useCar";
-import { CAR_SETTINGS, FUEL_MIXES } from "@/config";
+import { CAR_SETTINGS, FUEL_MIXES, QUALIFYING } from "@/config";
 import audioService from "@/services/audioService";
 import ttsService from "@/services/textToSpeechService";
 
@@ -12,14 +12,19 @@ describe("useCar Composable", () => {
   // The composable uses a shared singleton state, so reset it before each test
   // to keep tests independent of execution order.
   beforeEach(async () => {
-    const { resetRace } = useCar();
+    const { resetRace, disableAi } = useCar();
     await resetRace();
+    await disableAi().catch(() => {});
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe("initial / reset state", () => {
     it("should have correct initial state", () => {
-      const { engineStatus, rpm, fuelLevel, batteryLevel, fuelMix, tireLife } =
+      const { engineStatus, rpm, fuelLevel, batteryLevel, fuelMix, tireLife, raceMode } =
         useCar();
       expect(engineStatus.value).toBe(false);
       expect(rpm.value).toBe(0);
@@ -27,10 +32,11 @@ describe("useCar Composable", () => {
       expect(batteryLevel.value).toBe(100);
       expect(fuelMix.value).toBe(FUEL_MIXES.STANDARD);
       expect(tireLife.value).toBe(100);
+      expect(raceMode.value).toBe("race");
     });
 
     it("resetRace should restore all state to defaults", async () => {
-      const { startEngine, fuelLevel, resetRace, engineStatus } = useCar();
+      const { startEngine, fuelLevel, resetRace, engineStatus, raceMode } = useCar();
       await startEngine();
       fuelLevel.value = 42;
 
@@ -39,6 +45,7 @@ describe("useCar Composable", () => {
       expect(message).toBe("Race reset. All systems nominal.");
       expect(engineStatus.value).toBe(false);
       expect(fuelLevel.value).toBe(100);
+      expect(raceMode.value).toBe("race");
     });
   });
 
@@ -268,6 +275,117 @@ describe("useCar Composable", () => {
 
       expect(message).toBe("Unknown car: nonexistent.");
       expect(selectedCar.value.id).toBe(before);
+    });
+  });
+
+  describe("qualifying mode", () => {
+    it("startQualifying sets qualifying mode and starts the engine", async () => {
+      const { startQualifying, raceMode, engineStatus, currentGear } = useCar();
+
+      const message = await startQualifying();
+
+      expect(message).toContain("Qualifying session started");
+      expect(raceMode.value).toBe("qualifying");
+      expect(engineStatus.value).toBe(true);
+      expect(currentGear.value).toBe(1);
+    });
+
+    it("startQualifying fails if engine is already running", async () => {
+      const { startEngine, startQualifying } = useCar();
+      await startEngine();
+
+      const message = await startQualifying();
+
+      expect(message).toBe("Stop the engine before starting a qualifying session.");
+    });
+
+    it("startQualifying resets qualifying laps", async () => {
+      const { startQualifying, qualifyingLapsRemaining } = useCar();
+
+      await startQualifying();
+
+      expect(qualifyingLapsRemaining.value).toBe(QUALIFYING.LAPS);
+    });
+
+    it("resetRace clears qualifying mode back to race", async () => {
+      const { startQualifying, resetRace, raceMode } = useCar();
+      await startQualifying();
+      expect(raceMode.value).toBe("qualifying");
+
+      await resetRace();
+
+      expect(raceMode.value).toBe("race");
+    });
+
+    it("getQualifyingStatus reports not active in race mode", async () => {
+      const { getQualifyingStatus } = useCar();
+      const message = await getQualifyingStatus();
+      expect(message).toBe("Qualifying is not active.");
+    });
+
+    it("getQualifyingStatus reports laps remaining with no best lap", async () => {
+      const { startQualifying, getQualifyingStatus } = useCar();
+      await startQualifying();
+      const message = await getQualifyingStatus();
+      expect(message).toContain("3 laps remaining");
+    });
+
+    it("getQualifyingBestLap reports not active in race mode", async () => {
+      const { getQualifyingBestLap } = useCar();
+      const message = await getQualifyingBestLap();
+      expect(message).toBe("Qualifying is not active.");
+    });
+
+    it("getQualifyingBestLap reports no lap yet when none set", async () => {
+      const { startQualifying, getQualifyingBestLap } = useCar();
+      await startQualifying();
+      const message = await getQualifyingBestLap();
+      expect(message).toBe("No qualifying lap set yet.");
+    });
+
+    it("qualifyingInfo computed reflects active session", async () => {
+      const { startQualifying, qualifyingInfo } = useCar();
+
+      // Before qualifying
+      expect(qualifyingInfo.value.active).toBe(false);
+
+      await startQualifying();
+
+      expect(qualifyingInfo.value.active).toBe(true);
+      expect(qualifyingInfo.value.lapsRemaining).toBe(QUALIFYING.LAPS);
+      expect(qualifyingInfo.value.bestLap).toBeNull();
+    });
+
+    it("computedQualifyingPosition returns 1 when no AI rival", async () => {
+      const { startQualifying, computedQualifyingPosition } = useCar();
+      await startQualifying();
+      expect(computedQualifyingPosition.value).toBe(1);
+    });
+
+    it("computedQualifyingPosition returns 1 when player beats AI", async () => {
+      const { startQualifying, setAiDifficulty, qualifyingBestLap, computedQualifyingPosition, runSimulationTick } = useCar();
+      await startQualifying();
+      await setAiDifficulty("HARD");
+
+      // Set player best lap faster than AI will manage
+      qualifyingBestLap.value = 28000;
+      // Run ticks to get AI laps
+      for (let i = 0; i < 300; i++) runSimulationTick();
+
+      expect(computedQualifyingPosition.value).toBe(1);
+    });
+
+    it("computedQualifyingPosition returns 2 when AI beats player", async () => {
+      vi.spyOn(Math, "random").mockReturnValue(0.01); // Make AI consistent/fast
+      const { startQualifying, setAiDifficulty, qualifyingBestLap, computedQualifyingPosition, runSimulationTick } = useCar();
+      await startQualifying();
+      await setAiDifficulty("HARD");
+
+      // Player sets a slow lap, AI will be much faster
+      qualifyingBestLap.value = 40000;
+      for (let i = 0; i < 300; i++) runSimulationTick();
+
+      expect(computedQualifyingPosition.value).toBe(2);
     });
   });
 });

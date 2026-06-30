@@ -73,12 +73,31 @@ export function useRaceControl() {
     getBestLap,
     getDamageStatus,
     getWeatherStatus,
+    getTireTempStatus,
+    getPitWindowStatus,
     getHelp,
     getPosition,
     performPitStop,
     resetRace,
     selectCar,
     selectedCar,
+    raceMode,
+    qualifyingLapsRemaining,
+    qualifyingResults,
+    qualifyingBestLap,
+    qualifyingPosition,
+    qualifyingInfo,
+    aiQualifyingBestLap,
+    aiQualifyingFinished,
+    tireTemp,
+    tireTempDisplayStatus,
+    drsEligible,
+    pitWindowInfo,
+    pitWindowVisible,
+    pitWindowUrgent,
+    startQualifying,
+    getQualifyingStatus,
+    getQualifyingBestLap,
     formatLapTime,
   } = useCar();
 
@@ -228,6 +247,13 @@ export function useRaceControl() {
     carBalanced: () => selectCar("balanced"),
     carGripmaster: () => selectCar("gripmaster"),
     carEndurance: () => selectCar("endurance"),
+    // Qualifying
+    startQualifying,
+    qualifyingStatus: getQualifyingStatus,
+    qualifyingBest: getQualifyingBestLap,
+    // Tire temp + pit window
+    tireTempStatus: getTireTempStatus,
+    pitWindowStatus: getPitWindowStatus,
   };
 
   // --- RUN COMMAND ---
@@ -382,6 +408,19 @@ export function useRaceControl() {
     speedKmh,
     selectedCar,
     formatLapTime,
+    // Qualifying
+    raceMode,
+    qualifyingLapsRemaining,
+    qualifyingInfo,
+    aiQualifyingBestLap,
+    aiQualifyingFinished,
+    // Tire temp, DRS, pit window
+    tireTemp: tireTemp,
+    tireTempDisplayStatus: tireTempDisplayStatus,
+    drsEligible: drsEligible,
+    pitWindowInfo: pitWindowInfo,
+    pitWindowVisible: pitWindowVisible,
+    pitWindowUrgent: pitWindowUrgent,
     // i18n
     t,
     locale,

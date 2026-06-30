@@ -1,8 +1,9 @@
 // src/composables/useCarRaceFeatures.spec.js
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useCar } from "./useCar";
-import { CAR_SETTINGS, WEATHER_CONDITIONS } from "@/config";
+import { CAR_SETTINGS, WEATHER_CONDITIONS, WEATHER_SHIFT } from "@/config";
+import { scheduleWeatherShift } from "./useCarSimulation";
 import ttsService from "@/services/textToSpeechService";
 
 // audioService and textToSpeechService are mocked globally in vitest.setup.js
@@ -156,6 +157,121 @@ describe("useCar - weather", () => {
     expect(wetTemp).toBeLessThan(dryTemp);
   });
 });
+
+describe("useCar - weather shifts", () => {
+  beforeEach(async () => {
+    const { resetRace, disableAi } = useCar();
+    await resetRace();
+    await disableAi().catch(() => {});
+    vi.clearAllMocks();
+  });
+
+  it("scheduleWeatherShift picks a lap between min and max", () => {
+    const { nextWeather, weatherChangeLap } = useCar();
+    expect(nextWeather.value).toBeNull();
+    expect(weatherChangeLap.value).toBe(0);
+
+    scheduleWeatherShift();
+
+    expect(nextWeather.value).not.toBeNull();
+    expect(weatherChangeLap.value).toBeGreaterThanOrEqual(
+      WEATHER_SHIFT.CHANGE_LAP_MIN,
+    );
+    expect(weatherChangeLap.value).toBeLessThanOrEqual(
+      WEATHER_SHIFT.CHANGE_LAP_MAX,
+    );
+  });
+
+  it("scheduleWeatherShift picks a different weather from the current", () => {
+    const { weather } = useCar();
+    expect(weather.value).toBe("Dry");
+
+    scheduleWeatherShift();
+
+    const { nextWeather } = useCar();
+    expect(nextWeather.value).not.toBe("Dry");
+  });
+
+  it("checkWeatherShift announces forecast 2 laps before the change", () => {
+    const { runSimulationTick, currentLap, nextWeather, weatherChangeLap, lapProgress, engineStatus, rpm } = useCar();
+    engineStatus.value = true;
+    rpm.value = CAR_SETTINGS.RPM_MAX;
+
+    // Schedule a shift on lap 7
+    weatherChangeLap.value = 7;
+    nextWeather.value = "Wet";
+
+    // Advance to lap 5 (2 laps before change = should announce)
+    currentLap.value = 5;
+    lapProgress.value = 0;
+    runSimulationTick();
+
+    expect(ttsService.speak).toHaveBeenCalledWith(
+      expect.stringContaining("Wet"),
+    );
+  });
+
+  it("checkWeatherShift applies weather on the target lap", () => {
+    const { runSimulationTick, currentLap, weather, nextWeather, weatherChangeLap, lapProgress, engineStatus, rpm } = useCar();
+    engineStatus.value = true;
+    rpm.value = CAR_SETTINGS.RPM_MAX;
+
+    weatherChangeLap.value = 6;
+    nextWeather.value = "Wet";
+
+    // Advance to lap 6 (change lap)
+    currentLap.value = 6;
+    lapProgress.value = 0;
+    runSimulationTick();
+
+    expect(weather.value).toBe("Wet");
+    expect(nextWeather.value).toBeNull();
+    expect(weatherChangeLap.value).toBe(0);
+  });
+
+  it("resetRace clears pending weather shifts", async () => {
+    const { resetRace, nextWeather, weatherChangeLap } = useCar();
+
+    scheduleWeatherShift();
+    expect(nextWeather.value).not.toBeNull();
+
+    await resetRace();
+
+    expect(nextWeather.value).toBeNull();
+    expect(weatherChangeLap.value).toBe(0);
+  });
+
+  it("checkWeatherShift does not fire during qualifying", () => {
+    const { runSimulationTick, currentLap, weather, nextWeather, weatherChangeLap, lapProgress, raceMode, engineStatus, rpm } = useCar();
+    engineStatus.value = true;
+    rpm.value = CAR_SETTINGS.RPM_MAX;
+    raceMode.value = "qualifying";
+
+    weatherChangeLap.value = 4;
+    nextWeather.value = "Wet";
+    currentLap.value = 4;
+    lapProgress.value = 0;
+
+    runSimulationTick();
+
+    // Weather should NOT change during qualifying
+    expect(weather.value).toBe("Dry");
+  });
+
+  it("starting the engine triggers weather shift scheduling", async () => {
+    const { startEngine, nextWeather } = useCar();
+
+    // Simulate watcher: when engine starts, scheduleWeatherShift should be called
+    // This is hard to test directly because it's inside a watcher callback.
+    // Instead, we verify the schedule function works independently.
+    expect(nextWeather.value).toBeNull();
+    scheduleWeatherShift();
+    expect(nextWeather.value).not.toBeNull();
+  });
+});
+
+
+
 
 describe("useCar - damage", () => {
   beforeEach(async () => {

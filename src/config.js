@@ -183,3 +183,54 @@ export const WEATHER_CONDITIONS = {
   WET: { label: "Wet", gripFactor: 0.75, wearFactor: 1.3, tempBias: -8 },
   STORM: { label: "Storm", gripFactor: 0.55, wearFactor: 1.6, tempBias: -12 },
 };
+
+// Tire temperature model (degrees). Thermal dynamics affect grip and wear.
+// Tires heat up while driving, cool down while coasting. Grip is optimal
+// in the optimal range, reduced when cold or overheated.
+export const TIRE_TEMP = {
+  BASELINE: 90,
+  HEAT_RATE: 0.6, // degrees gained per tick while driving hard
+  COOL_RATE: 0.5, // degrees shed per tick while coasting
+  AMBIENT_COOL: 0.2, // slow drift toward baseline
+  COLD_THRESHOLD: 70,
+  OPTIMAL_MAX: 110,
+  CRITICAL_TEMP: 130,
+  GRIP_COLD_FACTOR: 0.90,
+  GRIP_OPTIMAL_FACTOR: 1.0,
+  GRIP_HOT_FACTOR: 0.95,
+  WEAR_COLD_FACTOR: 1.2,
+  WEAR_HOT_FACTOR: 1.3,
+};
+
+// DRS detection: DRS is only available when the player is close enough
+// to the AI rival at the detection point. DETECTION_SEGMENT is the track
+// segment index where the gap is checked; ELIGIBILITY_GAP_LAPS is the max
+// progress gap (in lap units) that qualifies.
+export const DRS_DETECTION = {
+  DETECTION_SEGMENT: 0, // main straight
+  ELIGIBILITY_GAP_LAPS: 0.05, // ~1 second at ~20s/lap
+};
+
+// Pit window strategy projects tire-wear and fuel-consumption rates to
+// recommend the optimal lap to pit.
+export const PIT_WINDOW = {
+  SUGGEST_AHEAD_LAPS: 2, // suggest pitting this many laps before critical
+  SHOW_WINDOW_LAPS: 5, // show the pit window when this many laps remain
+  URGENT_LAPS_REMAINING: 2, // "Box now" threshold
+};
+
+// Qualifying mode: a 3-lap shootout where both player and AI set their fastest
+// lap. The best lap determines starting grid position for the race.
+export const QUALIFYING = {
+  LAPS: 3,
+};
+
+// Dynamic weather shifts: the weather can change mid-race, forcing pit stops
+// for tire changes and adding strategic depth. The shift is scheduled when the
+// race simulation starts.
+export const WEATHER_SHIFT = {
+  ENABLED: true,
+  CHANGE_LAP_MIN: 4, // earliest lap a shift can happen
+  CHANGE_LAP_MAX: 8, // latest lap a shift can happen
+  FORECAST_LAPS: 2,   // how many laps in advance to announce the incoming change
+};

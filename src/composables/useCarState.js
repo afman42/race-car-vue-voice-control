@@ -14,6 +14,9 @@ import {
   TIRE_COMPOUNDS,
   ERS_MODES,
   WEATHER_CONDITIONS,
+  QUALIFYING,
+  TIRE_TEMP,
+  DRS_DETECTION,
 } from "@/config";
 import audioService from "@/services/audioService";
 import { t } from "@/i18n";
@@ -67,6 +70,37 @@ export const leaderboard = ref([]);
 // Weather + damage
 export const weather = ref(WEATHER_CONDITIONS.DRY.label);
 export const carDamage = ref(0);
+
+// Tire temperature (degrees). Starts at optimal baseline, heats while driving.
+export const tireTemp = ref(TIRE_TEMP.BASELINE);
+export const tireTempStatus = ref("Optimal");
+export const tireTempWarned = ref(false);
+
+// DRS eligibility — computed each tick when the player enters the detection zone.
+export const drsEligible = ref(false);
+
+// Pit window strategy: recommended pit stop lap based on tire/fuel projections.
+export const pitWindowStart = ref(null); // lap number to recommend pitting
+export const pitWindowVisible = ref(false); // show the pit window indicator
+export const pitWindowUrgent = ref(false); // true = "box now"
+
+// Sector timing (3 sectors per lap)
+export const sectorTimes = ref([0, 0, 0]); // current lap sector times
+export const bestSectorTimes = ref([null, null, null]); // best sector 1/2/3
+export const lastSectorTimes = ref([null, null, null]); // last lap sectors
+export const currentSector = ref(1); // 1, 2, or 3
+
+// Dynamic weather shift state
+export const nextWeather = ref(null); // pending weather label, null = none
+export const weatherChangeLap = ref(0); // lap on which weather will change, 0 = none
+export const weatherChangeAnnounced = ref(false); // latch for TTS forecast
+
+// Qualifying mode (3-lap shootout)
+export const raceMode = ref("race"); // "race" | "qualifying"
+export const qualifyingLapsRemaining = ref(QUALIFYING.LAPS);
+export const qualifyingResults = ref([]); // { lap, time } for player
+export const qualifyingBestLap = ref(null);
+export const qualifyingPosition = ref(1); // 1 or 2 based on quali comparison
 
 // Selected car preset
 export const selectedCar = ref(CAR_PRESETS[1]); // default: Balanced
@@ -165,6 +199,24 @@ export const ersConfig = () =>
   Object.values(ERS_MODES).find((m) => m.label === ersMode.value) ||
   ERS_MODES.BALANCED;
 
+// Compute tire temperature status label from raw temperature value.
+export const computeTireTempStatus = (temp) => {
+  if (temp < TIRE_TEMP.COLD_THRESHOLD) return "Cold";
+  if (temp <= TIRE_TEMP.OPTIMAL_MAX) return "Optimal";
+  if (temp <= TIRE_TEMP.CRITICAL_TEMP) return "Hot";
+  return "Overheated";
+};
+
+// Determine which sector (1, 2, or 3) a given normalized lap progress falls in.
+export const sectorAtProgress = (progress) => {
+  const safeProgress = ((progress % CAR_SETTINGS.LAP_DISTANCE) + CAR_SETTINGS.LAP_DISTANCE) % CAR_SETTINGS.LAP_DISTANCE;
+  const frac = safeProgress / CAR_SETTINGS.LAP_DISTANCE;
+  // Sector boundaries: 0-0.3 = S1, 0.3-0.65 = S2, 0.65-1.0 = S3
+  if (frac < 0.3) return 1;
+  if (frac < 0.65) return 2;
+  return 3;
+};
+
 export const weatherConfig = () =>
   Object.values(WEATHER_CONDITIONS).find((w) => w.label === weather.value) ||
   WEATHER_CONDITIONS.DRY;
@@ -210,6 +262,31 @@ export function _resetSingletons() {
   weather.value = WEATHER_CONDITIONS.DRY.label;
   carDamage.value = 0;
   selectedCar.value = CAR_PRESETS[1];
+  // Tire temp reset
+  tireTemp.value = TIRE_TEMP.BASELINE;
+  tireTempStatus.value = "Optimal";
+  tireTempWarned.value = false;
+  // DRS reset
+  drsEligible.value = false;
+  // Pit window reset
+  pitWindowStart.value = null;
+  pitWindowVisible.value = false;
+  pitWindowUrgent.value = false;
+  // Sector timing reset
+  sectorTimes.value = [0, 0, 0];
+  bestSectorTimes.value = [null, null, null];
+  lastSectorTimes.value = [null, null, null];
+  currentSector.value = 1;
+  // Weather shift reset
+  nextWeather.value = null;
+  weatherChangeLap.value = 0;
+  weatherChangeAnnounced.value = false;
+  // Qualifying reset
+  raceMode.value = "race";
+  qualifyingLapsRemaining.value = QUALIFYING.LAPS;
+  qualifyingResults.value = [];
+  qualifyingBestLap.value = null;
+  qualifyingPosition.value = 1;
   lowFuelWarned.value = false;
   lowBatteryWarned.value = false;
   overheatWarned.value = false;
