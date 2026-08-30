@@ -14,6 +14,10 @@ let currentLang = "en-US";
 // Fatal errors that mean restarting would loop forever (mic denied, etc.).
 const FATAL_ERRORS = new Set(["not-allowed", "service-not-allowed", "audio-capture"]);
 let lastError = null;
+let restartTimeout = null;
+let retryDelayMs = 100;
+const RETRY_MAX_MS = 1000;
+const CONFIDENCE_THRESHOLD = 0.5;
 
 const ensureRecognition = () => {
   if (recognition) {
@@ -71,11 +75,34 @@ export default {
     // Set our flag to false when starting
     isManuallyStopped = false;
     lastError = null;
+    retryDelayMs = 100;
+    clearTimeout(restartTimeout);
 
     recognitionInstance.onresult = (event) => {
-      const last = event.results.length - 1;
-      const transcript = event.results[last][0].transcript.trim().toLowerCase();
-      onResultCallback(transcript);
+      // Iterate from resultIndex, pick the last final result above the
+      // confidence threshold so low-confidence utterances don't feed the
+      // fuzzy matcher and produce false-positive commands.
+      let transcript = "";
+      let bestConfidence = -1;
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const res = event.results[i];
+        if (!res.isFinal) continue;
+        const conf = res[0].confidence ?? 1;
+        if (conf >= CONFIDENCE_THRESHOLD && conf > bestConfidence) {
+          transcript = res[0].transcript.trim().toLowerCase();
+          bestConfidence = conf;
+        }
+      }
+      // Fallback: if nothing cleared the threshold, use the last final.
+      if (!transcript) {
+        for (let i = event.results.length - 1; i >= event.resultIndex; i--) {
+          if (event.results[i].isFinal) {
+            transcript = event.results[i][0].transcript.trim().toLowerCase();
+            break;
+          }
+        }
+      }
+      if (transcript) onResultCallback(transcript);
     };
 
     recognitionInstance.onerror = (event) => {
@@ -88,16 +115,23 @@ export default {
 
     // Fired when the service stops for any reason.
     recognitionInstance.onend = () => {
-      // If it wasn't stopped by the user, restart it automatically — unless
-      // the last error was fatal (mic denied, no audio capture). Restarting
-      // after those would loop forever spamming recognition.start().
       if (!isManuallyStopped && !FATAL_ERRORS.has(lastError)) {
         console.log("Recognition service ended, restarting...");
-        setTimeout(() => recognitionInstance.start(), 100);
+        const delay = retryDelayMs;
+        retryDelayMs = Math.min(RETRY_MAX_MS, retryDelayMs * 2);
+        restartTimeout = setTimeout(() => {
+          restartTimeout = null;
+          if (isManuallyStopped || FATAL_ERRORS.has(lastError)) return;
+          try {
+            recognitionInstance.start();
+          } catch (e) {
+            console.error("Auto-restart start() failed", e);
+          }
+        }, delay);
       } else {
         console.log("Recognition service stopped (manual or fatal error).");
+        retryDelayMs = 100;
       }
-      // Clear the error so a subsequent manual start isn't blocked by it.
       lastError = null;
     };
 
@@ -117,6 +151,7 @@ export default {
   stopListening() {
     // Set our flag to true when the user clicks the stop button
     isManuallyStopped = true;
+    clearTimeout(restartTimeout);
     if (recognition) {
       recognition.stop();
     }

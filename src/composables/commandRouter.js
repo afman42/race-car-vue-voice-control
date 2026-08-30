@@ -1,7 +1,5 @@
 import { COMMAND_MATCHERS } from "@/commands/matchers";
 
-export { COMMAND_MATCHERS };
-
 /**
  * Levenshtein edit distance between two strings (number of single-character
  * insertions, deletions, or substitutions needed to turn a into b).
@@ -33,29 +31,130 @@ export function levenshtein(a, b) {
   return prev[b.length];
 }
 
-const FUZZY_MIN_LENGTH = 4;
-const fuzzyTolerance = (len) => Math.min(2, Math.floor(len / 4));
+// Fuzzy matching is deliberately tight: short words false-positive easily
+// (reset→preset, tire→time, rain→train, storm→stormy). Only keywords words of
+// at least FUZZY_MIN_LENGTH characters participate, and at most
+// FUZZY_MAX_DISTANCE edits are tolerated.
+const FUZZY_MIN_LENGTH = 8;
+const FUZZY_MAX_DISTANCE = 1;
+
+// Keywords that are prefixes of unrelated words ("quality" contains "quali")
+// require a trailing word boundary on the exact pass.
+const PREFIX_KEYWORDS = new Set(["lap", "ban", "gas", "quali", "kuali"]);
+
+// A command keyword preceded by one of these phrases is negated and its span
+// stripped before matching ("do not stop engine" must not fire stopEngine).
+const NEGATION_PHRASES = [
+  "do not",
+  "dont",
+  "don't",
+  "never",
+  "no",
+  "jangan",
+  "tidak",
+];
+const MAX_FILLERS = 2;
+
+const KEYWORD_PHRASES = COMMAND_MATCHERS.flatMap(({ keywords }) => [
+  ...(keywords.en || []),
+  ...(keywords.id || []),
+]).map((phrase) => phrase.split(/\s+/).filter(Boolean));
+
+const KEYWORD_PHRASE_SET = new Set(
+  KEYWORD_PHRASES.map((words) => words.join(" ")),
+);
+
+function tokensMatchPhrase(tokens, start, words) {
+  if (start + words.length > tokens.length) return 0;
+  return words.every((word, k) => tokens[start + k] === word)
+    ? words.length
+    : 0;
+}
+
+function negationLengthAt(tokens, start) {
+  let longest = 0;
+  for (const phrase of NEGATION_PHRASES) {
+    const length = tokensMatchPhrase(tokens, start, phrase.split(/\s+/));
+    if (length > longest) longest = length;
+  }
+  return longest;
+}
+
+function keywordLengthAt(tokens, start) {
+  for (const words of KEYWORD_PHRASES) {
+    const length = tokensMatchPhrase(tokens, start, words);
+    if (length) return length;
+  }
+  return 0;
+}
+
+/**
+ * Remove negated command spans from a token list: "negation [fillers] keyword"
+ * with at most MAX_FILLERS tokens between (the scan never crosses past the
+ * first keyword occurrence it finds). Spans that are themselves command
+ * phrases (e.g. "no rival") are kept intact. Returns a new array; the input
+ * tokens are never mutated.
+ */
+function stripNegatedSpans(tokens) {
+  const kept = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const negationLength = negationLengthAt(tokens, i);
+    if (!negationLength) {
+      kept.push(tokens[i]);
+      i += 1;
+      continue;
+    }
+
+    let spanEnd = 0;
+    for (
+      let probe = i + negationLength;
+      probe <= i + negationLength + MAX_FILLERS;
+      probe++
+    ) {
+      const keywordLength = keywordLengthAt(tokens, probe);
+      if (keywordLength) {
+        spanEnd = probe + keywordLength;
+        break;
+      }
+    }
+
+    const span = spanEnd ? tokens.slice(i, spanEnd).join(" ") : null;
+    if (!span || KEYWORD_PHRASE_SET.has(span)) {
+      // No command keyword within reach, or the span is a positive command
+      // phrase (e.g. "no rival" → aiOff) — keep the tokens.
+      kept.push(tokens[i]);
+      i += negationLength;
+      continue;
+    }
+
+    // Negated: drop the negation phrase, fillers, and keyword occurrence.
+    i = spanEnd;
+  }
+  return kept;
+}
+
+/**
+ * Fuzzy word comparison. Words shorter than FUZZY_MIN_LENGTH must match
+ * exactly; longer words tolerate at most FUZZY_MAX_DISTANCE edits. Tokens are
+ * whitespace-delimited whole words, so every match is word-bounded on both
+ * sides by construction (no prefix drift like "quality" → "quali" can occur).
+ */
+function matchesFuzzily(word, token) {
+  if (word.length < FUZZY_MIN_LENGTH) {
+    return word === token;
+  }
+  return levenshtein(word, token) <= FUZZY_MAX_DISTANCE;
+}
 
 function fuzzyKeywordMatch(tokens, keyword) {
   const words = keyword.split(/\s+/).filter(Boolean);
   if (!words.length || tokens.length < words.length) return false;
 
   for (let start = 0; start + words.length <= tokens.length; start++) {
-    let allMatch = true;
-    for (let k = 0; k < words.length; k++) {
-      const word = words[k];
-      const token = tokens[start + k];
-      if (word.length < FUZZY_MIN_LENGTH) {
-        if (word !== token) {
-          allMatch = false;
-          break;
-        }
-      } else if (levenshtein(word, token) > fuzzyTolerance(word.length)) {
-        allMatch = false;
-        break;
-      }
+    if (words.every((word, k) => matchesFuzzily(word, tokens[start + k]))) {
+      return true;
     }
-    if (allMatch) return true;
   }
   return false;
 }
@@ -64,30 +163,38 @@ function keywordMatches(transcript, keyword) {
   const escaped = keyword
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     .replace(/\s+/g, "\\s+");
-  return new RegExp(`\\b${escaped}`).test(transcript);
+  const tail = PREFIX_KEYWORDS.has(keyword) ? "\\b" : "";
+  return new RegExp(`\\b${escaped}${tail}`).test(transcript);
 }
 
 export function matchCommand(transcript, locale = "en") {
   if (!transcript) return null;
   const normalized = transcript.trim().toLowerCase();
 
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return null;
+
+  // Negated command spans are stripped before both passes so neither the
+  // exact nor the fuzzy pass can fire a negated command.
+  const stripped = stripNegatedSpans(tokens).join(" ");
+
   for (const { command, keywords } of COMMAND_MATCHERS) {
     const localeKeywords = keywords[locale] || [];
     const fallbackKeywords = locale === "en" ? [] : keywords.en || [];
     const all = [...localeKeywords, ...fallbackKeywords];
-    if (all.some((keyword) => keywordMatches(normalized, keyword))) {
+    if (all.some((keyword) => keywordMatches(stripped, keyword))) {
       return command;
     }
   }
 
-  const tokens = normalized.split(/\s+/).filter(Boolean);
-  if (!tokens.length) return null;
+  const strippedTokens = stripped.split(/\s+/).filter(Boolean);
+  if (!strippedTokens.length) return null;
 
   for (const { command, keywords } of COMMAND_MATCHERS) {
     const localeKeywords = keywords[locale] || [];
     const fallbackKeywords = locale === "en" ? [] : keywords.en || [];
     const all = [...localeKeywords, ...fallbackKeywords];
-    if (all.some((keyword) => fuzzyKeywordMatch(tokens, keyword))) {
+    if (all.some((keyword) => fuzzyKeywordMatch(strippedTokens, keyword))) {
       return command;
     }
   }

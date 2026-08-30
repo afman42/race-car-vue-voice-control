@@ -11,10 +11,12 @@ let currentLang = "en-US";
 // Cached voice list. Populated lazily; refreshed on the voiceschanged event
 // (Chrome populates getVoices() async, so the first call often returns []).
 let cachedVoices = null;
+let activeUtterance = null;
+const onVoicesChanged = () => {
+  cachedVoices = synth.getVoices();
+};
 if (synth) {
-  synth.onvoiceschanged = () => {
-    cachedVoices = synth.getVoices();
-  };
+  synth.onvoiceschanged = onVoicesChanged;
   // Eagerly populate in case the event already fired (some browsers do).
   cachedVoices = synth.getVoices();
 }
@@ -48,7 +50,7 @@ export default {
   },
 
   speak(textToSpeak) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (!synth) {
         console.warn("SpeechSynthesis API not available; skipping speech.");
         resolve();
@@ -59,34 +61,44 @@ export default {
         return;
       }
 
-      // If something is already being spoken, cancel it so the newest
-      // message is heard rather than silently dropped.
+      const doSpeak = () => {
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        activeUtterance = utterance;
+
+        utterance.onend = () => {
+          activeUtterance = null;
+          resolve();
+        };
+
+        utterance.onerror = (event) => {
+          console.warn("SpeechSynthesisUtterance.onerror", event);
+          activeUtterance = null;
+          resolve();
+        };
+
+        const desiredVoice = pickVoice();
+        if (desiredVoice) utterance.voice = desiredVoice;
+        utterance.lang = currentLang;
+        utterance.pitch = 1;
+        utterance.rate = 1.1;
+
+        synth.speak(utterance);
+      };
+
       if (synth.speaking || synth.pending) {
         synth.cancel();
+        // Chrome drops an utterance spoken immediately after cancel() — defer
+        // one tick so the engine is idle before queuing the new one.
+        setTimeout(doSpeak, 0);
+      } else {
+        doSpeak();
       }
-
-      const utterance = new SpeechSynthesisUtterance(textToSpeak);
-
-      utterance.onend = () => {
-        resolve(); // Resolve the promise when speaking is finished
-      };
-
-      utterance.onerror = (event) => {
-        console.warn("SpeechSynthesisUtterance.onerror", event);
-        // Never reject — speech errors (e.g. no voices in headless) should not
-        // crash command processing. The app continues without audible feedback.
-        resolve();
-      };
-
-      // Pick a voice matching the active language; set the lang regardless so
-      // the engine can fall back sensibly when no exact voice is installed.
-      const desiredVoice = pickVoice();
-      if (desiredVoice) utterance.voice = desiredVoice;
-      utterance.lang = currentLang;
-      utterance.pitch = 1;
-      utterance.rate = 1.1;
-
-      synth.speak(utterance);
     });
+  },
+
+  dispose() {
+    if (synth) synth.onvoiceschanged = null;
+    cachedVoices = null;
+    activeUtterance = null;
   },
 };
