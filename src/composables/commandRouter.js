@@ -167,22 +167,21 @@ function keywordMatches(transcript, keyword) {
   return new RegExp(`\\b${escaped}${tail}`).test(transcript);
 }
 
+function keywordsForLocale(keywords, locale) {
+  const primary = keywords[locale] || [];
+  const fallback = locale === "en" ? [] : keywords.en || [];
+  return [...primary, ...fallback];
+}
+
 export function matchCommand(transcript, locale = "en") {
   if (!transcript) return null;
   const normalized = transcript.trim().toLowerCase();
-
   const tokens = normalized.split(/\s+/).filter(Boolean);
   if (!tokens.length) return null;
-
-  // Negated command spans are stripped before both passes so neither the
-  // exact nor the fuzzy pass can fire a negated command.
   const stripped = stripNegatedSpans(tokens).join(" ");
 
   for (const { command, keywords } of COMMAND_MATCHERS) {
-    const localeKeywords = keywords[locale] || [];
-    const fallbackKeywords = locale === "en" ? [] : keywords.en || [];
-    const all = [...localeKeywords, ...fallbackKeywords];
-    if (all.some((keyword) => keywordMatches(stripped, keyword))) {
+    if (keywordsForLocale(keywords, locale).some((k) => keywordMatches(stripped, k))) {
       return command;
     }
   }
@@ -191,10 +190,7 @@ export function matchCommand(transcript, locale = "en") {
   if (!strippedTokens.length) return null;
 
   for (const { command, keywords } of COMMAND_MATCHERS) {
-    const localeKeywords = keywords[locale] || [];
-    const fallbackKeywords = locale === "en" ? [] : keywords.en || [];
-    const all = [...localeKeywords, ...fallbackKeywords];
-    if (all.some((keyword) => fuzzyKeywordMatch(strippedTokens, keyword))) {
+    if (keywordsForLocale(keywords, locale).some((k) => fuzzyKeywordMatch(strippedTokens, k))) {
       return command;
     }
   }

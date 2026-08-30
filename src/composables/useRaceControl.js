@@ -338,34 +338,19 @@ export function useRaceControl() {
 
   const handleError = (error) => {
     const errorCode =
-      typeof error === "string"
-        ? error
-        : error?.error || error?.message || "unknown";
-
-    // Transient: the service auto-restarts with backoff and the mic stays
-    // live — report quietly, never claim listening stopped. Fatal: the
-    // session is over, close the radio state out.
+      typeof error === "string" ? error : error?.error || error?.message || "unknown";
     const TRANSIENT_ERRORS = new Set(["no-speech", "network", "aborted"]);
     if (TRANSIENT_ERRORS.has(errorCode)) {
-      statusMessage.value =
-        errorCode === "network" ? t("err.network") : t("err.noSpeech");
+      statusMessage.value = errorCode === "network" ? t("err.network") : t("err.noSpeech");
       return;
     }
-
-    let errorMessage = t("err.unknown");
-    switch (errorCode) {
-      case "not-allowed":
-      case "service-not-allowed":
-        errorMessage = t("err.micDenied");
-        break;
-      case "audio-capture":
-        errorMessage = t("err.audioCapture");
-        break;
-      case "not-supported":
-        errorMessage = t("err.notSupported");
-        break;
-    }
-    statusMessage.value = errorMessage;
+    const messages = {
+      "not-allowed": t("err.micDenied"),
+      "service-not-allowed": t("err.micDenied"),
+      "audio-capture": t("err.audioCapture"),
+      "not-supported": t("err.notSupported"),
+    };
+    statusMessage.value = messages[errorCode] || t("err.unknown");
     isListening.value = false;
   };
 

@@ -105,7 +105,6 @@ const autoShift = () => {
     currentGear.value = 0;
     return;
   }
-
   if (currentGear.value === 0) {
     currentGear.value = 1;
     engineAudioService.onShiftUp();
@@ -119,20 +118,15 @@ const autoShift = () => {
   setLastSegmentIndex(segInfo.index);
 
   // On a straight: upshift when RPM is high enough.
-  if (currentGear.value < targetGear) {
-    if (rpm.value >= CAR_SETTINGS.GEAR_SHIFT_RPM) {
-      currentGear.value++;
-      rpm.value = CAR_SETTINGS.GEAR_DROP_RPM;
-    }
-  }
-
-  // In or entering a corner: drop gears toward the target (2/tick).
-  if (currentGear.value > targetGear) {
-    const drop = Math.min(2, currentGear.value - targetGear);
-    currentGear.value -= drop;
+  if (currentGear.value < targetGear && rpm.value >= CAR_SETTINGS.GEAR_SHIFT_RPM) {
+    currentGear.value++;
     rpm.value = CAR_SETTINGS.GEAR_DROP_RPM;
   }
-
+  // In or entering a corner: drop gears toward the target (2/tick).
+  if (currentGear.value > targetGear) {
+    currentGear.value -= Math.min(2, currentGear.value - targetGear);
+    rpm.value = CAR_SETTINGS.GEAR_DROP_RPM;
+  }
   // Safety downshift: RPM dropped to near-idle.
   if (rpm.value <= CAR_SETTINGS.RPM_IDLE + 500 && currentGear.value > 1) {
     currentGear.value--;
@@ -141,11 +135,8 @@ const autoShift = () => {
 
   // Shift sounds.
   if (currentGear.value !== prevGear) {
-    if (currentGear.value > prevGear) {
-      engineAudioService.onShiftUp();
-    } else {
-      engineAudioService.onShiftDown();
-    }
+    if (currentGear.value > prevGear) engineAudioService.onShiftUp();
+    else engineAudioService.onShiftDown();
   }
 };
 
@@ -299,38 +290,30 @@ const updateTemperature = (ratio) => {
   next += heat - cool;
   if (overtakeActive.value) next += CAR_SETTINGS.TEMP_OVERTAKE_PENALTY;
   next += weatherConfig().tempBias;
-  engineTemp.value = parseFloat(
-    Math.max(CAR_SETTINGS.TEMP_AMBIENT, next).toFixed(1),
-  );
+  engineTemp.value = Math.round(Math.max(CAR_SETTINGS.TEMP_AMBIENT, next) * 10) / 10;
 };
 
 // --- TIRE TEMPERATURE ---
 const updateTireTemperature = (ratio) => {
   let next = tireTemp.value;
   if (engineStatus.value && ratio > 0.1) {
-    // Heat up while driving
     next += TIRE_TEMP.HEAT_RATE * ratio;
   } else {
-    // Cool down while coasting/stopped
     next -= TIRE_TEMP.COOL_RATE;
   }
-  // Ambient drift toward baseline
   if (next > TIRE_TEMP.BASELINE) next -= TIRE_TEMP.AMBIENT_COOL;
   else if (next < TIRE_TEMP.BASELINE) next += TIRE_TEMP.AMBIENT_COOL;
-  // Weather bias: wet/storm cools tires, dry heat builds
   next += weatherConfig().tempBias * 0.3;
   next = Math.max(TIRE_TEMP_MIN, Math.min(TIRE_TEMP_CEILING, next));
-  tireTemp.value = parseFloat(next.toFixed(1));
-
-  // Tire temp warning (only once per crossing into critical)
-  if (tireTemp.value >= TIRE_TEMP.CRITICAL_TEMP && !tireTempWarned.value) {
+  tireTemp.value = Math.round(next * 10) / 10;
+  const critical = tireTemp.value >= TIRE_TEMP.CRITICAL_TEMP;
+  if (critical && !tireTempWarned.value) {
     tireTempWarned.value = true;
     ttsService.speak(t("msg.warnTireTemp"));
-  } else if (tireTemp.value < TIRE_TEMP.CRITICAL_TEMP) {
+  } else if (!critical) {
     tireTempWarned.value = false;
   }
 };
-
 // Tire-wear temperature multiplier shared by the tick (actual wear) and the
 // pit-window projection (forecast) so the two never drift apart.
 const tireWearTempFactor = () => {
@@ -396,7 +379,7 @@ const updatePitWindow = () => {
     (1 + ratio) *
     compoundConfig().wearFactor *
     weatherConfig().wearFactor;
-  const ticksPerLap = CAR_SETTINGS.LAP_DISTANCE / (CAR_SETTINGS.LAP_PROGRESS_BASE * 0.8);
+  const ticksPerLap = CAR_SETTINGS.LAP_DISTANCE / (CAR_SETTINGS.LAP_PROGRESS_BASE * PIT_PROJECTION_PACE_FACTOR);
   const wearPerLap = wearPerTick * ticksPerLap;
   const lapsOfTireLifeRemaining = wearPerLap > 0 ? tireLife.value / wearPerLap : 99;
 
@@ -408,21 +391,19 @@ const updatePitWindow = () => {
   const limitingLaps = Math.min(lapsOfTireLifeRemaining, lapsOfFuelRemaining);
   const currentLapNumber = currentLap.value;
 
-  if (limitingLaps <= PIT_WINDOW.SHOW_WINDOW_LAPS && !raceFinished.value) {
-    pitWindowVisible.value = true;
-    pitWindowStart.value = currentLapNumber + Math.max(0, Math.ceil(limitingLaps - PIT_WINDOW.SUGGEST_AHEAD_LAPS));
-    pitWindowUrgent.value = limitingLaps <= PIT_WINDOW.URGENT_LAPS_REMAINING;
-
-    // "Box now" TTS announcement (once per transition)
-    if (pitWindowUrgent.value && !getPitUrgentWarned()) {
-      setPitUrgentWarned(true);
-      ttsService.speak(t("msg.pitWindowUrgent", { lap: pitWindowStart.value }));
-    }
-  } else {
+  if (limitingLaps > PIT_WINDOW.SHOW_WINDOW_LAPS) {
     pitWindowVisible.value = false;
     pitWindowStart.value = null;
     pitWindowUrgent.value = false;
     setPitUrgentWarned(false);
+    return;
+  }
+  pitWindowVisible.value = true;
+  pitWindowStart.value = currentLapNumber + Math.max(0, Math.ceil(limitingLaps - PIT_WINDOW.SUGGEST_AHEAD_LAPS));
+  pitWindowUrgent.value = limitingLaps <= PIT_WINDOW.URGENT_LAPS_REMAINING;
+  if (pitWindowUrgent.value && !getPitUrgentWarned()) {
+    setPitUrgentWarned(true);
+    ttsService.speak(t("msg.pitWindowUrgent", { lap: pitWindowStart.value }));
   }
 };
 
@@ -483,45 +464,23 @@ const updateDamage = () => {
     added += CAR_SETTINGS.DAMAGE_OVERHEAT_RATE * 0.3;
   }
   if (added > 0) {
-    carDamage.value = parseFloat(
-      Math.min(100, carDamage.value + added).toFixed(2),
-    );
+    carDamage.value = Math.round(Math.min(100, carDamage.value + added) * 100) / 100;
   }
 };
 
-// --- WARNINGS ---
 const checkWarnings = () => {
-  const isLowFuel = fuelLevel.value < CAR_SETTINGS.LOW_FUEL_THRESHOLD;
-  const isLowBattery = batteryLevel.value < CAR_SETTINGS.LOW_BATTERY_THRESHOLD;
-
-  if (isLowFuel && !lowFuelWarned.value) {
-    lowFuelWarned.value = true;
-    ttsService.speak(t("msg.warnFuel"));
-  } else if (!isLowFuel) {
-    lowFuelWarned.value = false;
-  }
-
-  if (isLowBattery && !lowBatteryWarned.value) {
-    lowBatteryWarned.value = true;
-    ttsService.speak(t("msg.warnBattery"));
-  } else if (!isLowBattery) {
-    lowBatteryWarned.value = false;
-  }
-
-  if (engineTemp.value > CAR_SETTINGS.TEMP_OPTIMAL_MAX && !overheatWarned.value) {
-    overheatWarned.value = true;
-    ttsService.speak(t("msg.warnTemp"));
-  } else if (engineTemp.value <= CAR_SETTINGS.TEMP_OPTIMAL_MAX) {
-    overheatWarned.value = false;
-  }
-
-  const damageCritical = carDamage.value >= CAR_SETTINGS.DAMAGE_CRITICAL_THRESHOLD;
-  if (damageCritical && !damageWarned.value) {
-    damageWarned.value = true;
-    ttsService.speak(t("msg.warnDamage"));
-  } else if (!damageCritical) {
-    damageWarned.value = false;
-  }
+  const warnOnce = (condition, flag, msgKey) => {
+    if (condition && !flag.value) {
+      flag.value = true;
+      ttsService.speak(t(msgKey));
+    } else if (!condition) {
+      flag.value = false;
+    }
+  };
+  warnOnce(fuelLevel.value < CAR_SETTINGS.LOW_FUEL_THRESHOLD, lowFuelWarned, "msg.warnFuel");
+  warnOnce(batteryLevel.value < CAR_SETTINGS.LOW_BATTERY_THRESHOLD, lowBatteryWarned, "msg.warnBattery");
+  warnOnce(engineTemp.value > CAR_SETTINGS.TEMP_OPTIMAL_MAX, overheatWarned, "msg.warnTemp");
+  warnOnce(carDamage.value >= CAR_SETTINGS.DAMAGE_CRITICAL_THRESHOLD, damageWarned, "msg.warnDamage");
 };
 
 // --- STALL ---
@@ -560,9 +519,7 @@ export const runSimulationTick = () => {
     const totalConsumptionRate = fuelConsumptionPerTick(ratio);
 
     if (fuelLevel.value > 0) {
-      fuelLevel.value = parseFloat(
-        Math.max(0, fuelLevel.value - totalConsumptionRate).toFixed(2),
-      );
+      fuelLevel.value = Math.round(Math.max(0, fuelLevel.value - totalConsumptionRate) * 100) / 100;
     }
 
     // Tire wear (with tire temperature multiplier).
@@ -573,21 +530,16 @@ export const runSimulationTick = () => {
         compoundConfig().wearFactor *
         weatherConfig().wearFactor *
         tireWearTempFactor();
-      tireLife.value = parseFloat(
-        Math.max(0, tireLife.value - wear).toFixed(2),
-      );
+      tireLife.value = Math.round(Math.max(0, tireLife.value - wear) * 100) / 100;
     }
 
     // Battery recharge.
     if (batteryLevel.value < 100) {
       const recharge =
         CAR_SETTINGS.BATTERY_RECHARGE_RATE * ersConfig().rechargeFactor;
-      batteryLevel.value = parseFloat(
-        Math.min(100, batteryLevel.value + recharge).toFixed(2),
-      );
+      batteryLevel.value = Math.round(Math.min(100, batteryLevel.value + recharge) * 100) / 100;
     }
   }
-
   updateTemperature(ratio);
   updateTireTemperature(ratio);
   updateDamage();

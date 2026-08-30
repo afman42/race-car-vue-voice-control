@@ -249,50 +249,27 @@ export function useCar() {
   };
 
   const activateDrs = async () => {
-    let message = "";
-
-    if (!engineStatus.value) {
-      message = t("msg.drsEngineOff");
-    } else if (drsStatus.value) {
-      message = t("msg.drsAlreadyActive");
-    } else if (ai.enabled.value && !drsEligible.value) {
-      message = t("msg.drsNotEligible");
-    } else {
-      drsStatus.value = true;
-      await audioService.playSound("drsOn");
-      message = t("msg.drsEnabled");
-    }
-
-    await ttsService.speak(message);
-    return message;
+    if (!engineStatus.value) return speakAndReturn("msg.drsEngineOff");
+    if (drsStatus.value) return speakAndReturn("msg.drsAlreadyActive");
+    if (ai.enabled.value && !drsEligible.value) return speakAndReturn("msg.drsNotEligible");
+    drsStatus.value = true;
+    await audioService.playSound("drsOn");
+    return speakAndReturn("msg.drsEnabled");
   };
 
   const deactivateDrs = async () => {
-    let message = "";
-
-    if (!drsStatus.value) {
-      message = t("msg.drsAlreadyDisabled");
-    } else {
-      drsStatus.value = false;
-      await audioService.playSound("drsOff");
-      message = t("msg.drsDisabled");
-    }
-
-    await ttsService.speak(message);
-    return message;
+    if (!drsStatus.value) return speakAndReturn("msg.drsAlreadyDisabled");
+    drsStatus.value = false;
+    await audioService.playSound("drsOff");
+    return speakAndReturn("msg.drsDisabled");
   };
 
   const activateOvertake = async () => {
-    let message = "";
-    if (overtakeActive.value) message = t("msg.overtakeAlreadyActive");
-    else if (!engineStatus.value) message = t("msg.overtakeEngineOff");
-    else if (overheating.value) message = t("msg.overtakeOverheating");
-    else if (batteryLevel.value < CAR_SETTINGS.OVERTAKE_BATTERY_COST)
-      message = t("msg.overtakeLowBattery");
-
-    if (message) {
-      await ttsService.speak(message);
-      return message;
+    if (overtakeActive.value) return speakAndReturn("msg.overtakeAlreadyActive");
+    if (!engineStatus.value) return speakAndReturn("msg.overtakeEngineOff");
+    if (overheating.value) return speakAndReturn("msg.overtakeOverheating");
+    if (batteryLevel.value < CAR_SETTINGS.OVERTAKE_BATTERY_COST) {
+      return speakAndReturn("msg.overtakeLowBattery");
     }
 
     overtakeActive.value = true;
@@ -301,7 +278,7 @@ export function useCar() {
     // boost never double-counts when the climb already erased it.
     const rpmBeforeBoost = rpm.value;
     rpm.value = Math.min(CAR_SETTINGS.RPM_MAX, rpm.value + CAR_SETTINGS.RPM_OVERTAKE_BOOST);
-    message = t("msg.overtakeActivated");
+    const message = t("msg.overtakeActivated");
 
     await audioService.playSound("overtakeOn");
     await ttsService.speak(message);
@@ -325,53 +302,25 @@ export function useCar() {
 
   const setFuelMix = async (mode) => {
     const key = String(mode).toUpperCase();
-    if (!FUEL_MIXES[key]) {
-      const message = t("msg.unknownFuelMix", { mode });
-      await ttsService.speak(message);
-      return message;
-    }
-
+    if (!FUEL_MIXES[key]) return speakAndReturn("msg.unknownFuelMix", { mode });
     fuelMix.value = FUEL_MIXES[key];
-    const message = t("msg.fuelMixSet", { label: FUEL_MIXES[key] });
-    await ttsService.speak(message);
-    return message;
+    return speakAndReturn("msg.fuelMixSet", { label: FUEL_MIXES[key] });
   };
 
   const setErsMode = async (mode) => {
     const key = String(mode).toUpperCase();
-    if (!ERS_MODES[key]) {
-      const message = t("msg.unknownErsMode", { mode });
-      await ttsService.speak(message);
-      return message;
-    }
-
+    if (!ERS_MODES[key]) return speakAndReturn("msg.unknownErsMode", { mode });
     ersMode.value = ERS_MODES[key].label;
-    const message = t("msg.ersModeSet", { label: ERS_MODES[key].label });
-    await ttsService.speak(message);
-    return message;
+    return speakAndReturn("msg.ersModeSet", { label: ERS_MODES[key].label });
   };
 
   const setTireCompound = async (compound) => {
     const key = String(compound).toUpperCase();
-    if (!TIRE_COMPOUNDS[key]) {
-      const message = t("msg.unknownCompound", { compound });
-      await ttsService.speak(message);
-      return message;
-    }
-
-    if (engineStatus.value && !pitting.value) {
-      const message = t("msg.compoundPitFirst");
-      await ttsService.speak(message);
-      return message;
-    }
-
+    if (!TIRE_COMPOUNDS[key]) return speakAndReturn("msg.unknownCompound", { compound });
+    if (engineStatus.value && !pitting.value) return speakAndReturn("msg.compoundPitFirst");
     tireCompound.value = TIRE_COMPOUNDS[key].label;
-    if (pitting.value) {
-      tireLife.value = 100;
-    }
-    const message = t("msg.compoundFitted", { label: TIRE_COMPOUNDS[key].label });
-    await ttsService.speak(message);
-    return message;
+    if (pitting.value) tireLife.value = 100;
+    return speakAndReturn("msg.compoundFitted", { label: TIRE_COMPOUNDS[key].label });
   };
 
   const checkTireStatus = () =>
@@ -419,29 +368,16 @@ export function useCar() {
     });
   };
 
-  const getTireTempStatus = async () => {
-    const message = t("msg.tireTempStatus", {
+  const getTireTempStatus = () =>
+    speakAndReturn("msg.tireTempStatus", {
       temp: tireTemp.value,
       status: statusWord(tireTempDisplayStatus.value),
     });
-    await ttsService.speak(message);
-    return message;
-  };
 
-  const getPitWindowStatus = async () => {
-    if (!pitWindowVisible.value) {
-      const message = t("msg.pitWindowOk");
-      await ttsService.speak(message);
-      return message;
-    }
-    if (pitWindowUrgent.value) {
-      const message = t("msg.pitWindowUrgent", { lap: pitWindowStart.value });
-      await ttsService.speak(message);
-      return message;
-    }
-    const message = t("msg.pitWindowRecommend", { lap: pitWindowStart.value });
-    await ttsService.speak(message);
-    return message;
+  const getPitWindowStatus = () => {
+    if (!pitWindowVisible.value) return speakAndReturn("msg.pitWindowOk");
+    if (pitWindowUrgent.value) return speakAndReturn("msg.pitWindowUrgent", { lap: pitWindowStart.value });
+    return speakAndReturn("msg.pitWindowRecommend", { lap: pitWindowStart.value });
   };
 
   const getBestLap = () => {
@@ -462,31 +398,19 @@ export function useCar() {
 
   const setWeather = async (condition) => {
     const key = String(condition).toUpperCase();
-    if (!WEATHER_CONDITIONS[key]) {
-      const message = t("msg.unknownWeather", { condition });
-      await ttsService.speak(message);
-      return message;
-    }
+    if (!WEATHER_CONDITIONS[key]) return speakAndReturn("msg.unknownWeather", { condition });
     weather.value = WEATHER_CONDITIONS[key].label;
-    const message = t("msg.weatherSet", { label: WEATHER_CONDITIONS[key].label });
-    await ttsService.speak(message);
-    return message;
+    return speakAndReturn("msg.weatherSet", { label: WEATHER_CONDITIONS[key].label });
   };
 
   const performPitStop = async () => {
-    if (raceFinished.value) {
-      const message = t("msg.raceComplete");
-      await ttsService.speak(message);
-      return message;
-    }
-
+    if (raceFinished.value) return speakAndReturn("msg.raceComplete");
     pitting.value = true;
     try {
       await stopEngine();
       await new Promise((resolve) =>
         setTimeout(resolve, CAR_SETTINGS.PIT_STOP_DURATION_MS),
       );
-
       fuelLevel.value = 100;
       batteryLevel.value = 100;
       tireLife.value = 100;
@@ -510,32 +434,18 @@ export function useCar() {
   const resetRace = async () => {
     _resetSingletons();
     ai.resetProgress();
-    const message = t("msg.raceReset");
-    await ttsService.speak(message);
-    return message;
+    return speakAndReturn("msg.raceReset");
   };
 
   const selectCar = async (carId) => {
-    if (engineStatus.value || pitting.value) {
-      const message = t("msg.carSelectEngineRunning");
-      await ttsService.speak(message);
-      return message;
-    }
+    if (engineStatus.value || pitting.value) return speakAndReturn("msg.carSelectEngineRunning");
     const car = CAR_PRESETS.find((c) => c.id === carId);
-    if (!car) {
-      const message = t("msg.carSelectUnknown", { id: carId });
-      await ttsService.speak(message);
-      return message;
-    }
+    if (!car) return speakAndReturn("msg.carSelectUnknown", { id: carId });
     selectedCar.value = car;
-    const message = t("msg.carSelected", { label: car.label });
-    await ttsService.speak(message);
-    return message;
+    return speakAndReturn("msg.carSelected", { label: car.label });
   };
-
   // --- WATCHER FOR SIMULATION ---
   if (!simWatcherRegistered) {
-    setSimWatcherRegistered(true);
     watch(
       [engineStatus, ai.enabled, ai.finished, ai.qualifyingFinished, pitting],
       () => {

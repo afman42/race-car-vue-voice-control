@@ -168,10 +168,14 @@ export function setSimWatcherRegistered(val) {
   simWatcherRegistered = val;
 }
 
+// Normalize lap progress to [0, LAP_DISTANCE) handling negative/wrapping values.
+const normalizeProgress = (progress) =>
+  ((progress % CAR_SETTINGS.LAP_DISTANCE) + CAR_SETTINGS.LAP_DISTANCE) % CAR_SETTINGS.LAP_DISTANCE;
+
 // Find which track segment a lap progress value falls within.
 // Handles wrapping so progress > LAP_DISTANCE wraps back to the start.
 export const findSegmentAtProgress = (progress) => {
-  const safeProgress = ((progress % CAR_SETTINGS.LAP_DISTANCE) + CAR_SETTINGS.LAP_DISTANCE) % CAR_SETTINGS.LAP_DISTANCE;
+  const safeProgress = normalizeProgress(progress);
   let accumulated = 0;
   for (let i = 0; i < CAR_SETTINGS.TRACK_LAYOUT.length; i++) {
     accumulated += CAR_SETTINGS.TRACK_LAYOUT[i].length;
@@ -209,10 +213,8 @@ export const computeTireTempStatus = (temp) => {
   return "Overheated";
 };
 
-// Determine which sector (1, 2, or 3) a given normalized lap progress falls in.
 export const sectorAtProgress = (progress) => {
-  const safeProgress = ((progress % CAR_SETTINGS.LAP_DISTANCE) + CAR_SETTINGS.LAP_DISTANCE) % CAR_SETTINGS.LAP_DISTANCE;
-  const frac = safeProgress / CAR_SETTINGS.LAP_DISTANCE;
+  const frac = normalizeProgress(progress) / CAR_SETTINGS.LAP_DISTANCE;
   // Sector boundaries: 0-0.3 = S1, 0.3-0.65 = S2, 0.65-1.0 = S3
   if (frac < 0.3) return 1;
   if (frac < 0.65) return 2;
