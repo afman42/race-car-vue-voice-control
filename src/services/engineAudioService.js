@@ -25,6 +25,12 @@ const HARMONICS = [
 const RPM_FREQ_MIN = 35;
 const RPM_FREQ_MAX = 160;
 
+// Fade/cleanup timing (seconds for Web Audio, ms for setTimeout).
+const FADE_IN_S = 0.2; // start() ramp-up to avoid a click
+const FADE_OUT_S = 0.3; // stop() ramp-down
+const OSC_STOP_S = FADE_OUT_S + 0.05; // oscillators stop just after the fade
+const NODE_CLEANUP_MS = 400; // disconnect nodes after stop() completes
+
 const rpmToFrequency = (rpm) => {
   const t = Math.max(0, Math.min(1, rpm / 8000));
   return RPM_FREQ_MIN + t * (RPM_FREQ_MAX - RPM_FREQ_MIN);
@@ -75,7 +81,9 @@ const playShiftUp = () => {
     gain.connect(audioCtx.destination);
     osc.start(now);
     osc.stop(now + 0.08);
-  } catch { /* skip */ }
+  } catch (e) {
+    console.warn('Engine audio: shift-up blip failed', e);
+  }
 };
 
 // Play a deeper, more aggressive blip for downshifts — lower pitch with a
@@ -136,18 +144,27 @@ const playShiftDown = () => {
       popOsc.start(popTime);
       popOsc.stop(popTime + 0.04);
     }
-  } catch { /* skip */ }
+  } catch (e) {
+    console.warn('Engine audio: shift-down blip failed', e);
+  }
 };
 
 export default {
   /**
    * Start the engine sound. Creates the AudioContext on first call (browsers
    * require a user gesture to create/resume an AudioContext).
-   * @returns {boolean} true if the sound started successfully.
+   * @param {number} rpm - Initial engine rpm; sets the first pitch.
+   * @returns {Promise<boolean>} Resolves true once playback started.
    */
-  start(rpm = 4000) {
+  async start(rpm = 4000) {
     if (isActive) return true;
-    if (typeof window === 'undefined' || typeof window.AudioContext === 'undefined') {
+    // The guard must match the constructor lookup: some browsers only
+    // expose the webkit-prefixed implementation.
+    if (
+      typeof window === 'undefined' ||
+      (typeof window.AudioContext === 'undefined' &&
+        typeof window.webkitAudioContext === 'undefined')
+    ) {
       return false;
     }
 
@@ -157,21 +174,41 @@ export default {
         audioCtx = new AC();
       }
       if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
+        // Await the resume so a rejected start is handled below instead of
+        // escaping as an unhandled rejection while we claim success.
+        await audioCtx.resume();
       }
 
       createOscillators();
 
-      // Fade in over 200ms to avoid a click.
+      // Apply the initial pitch immediately so the first tick tracks the
+      // requested rpm instead of the default oscillator frequency.
+      const baseFreq = rpmToFrequency(rpm);
+      for (const { osc, mult } of layers) {
+        osc.frequency.setValueAtTime(baseFreq * mult, audioCtx.currentTime);
+      }
+
+      // Fade in to avoid a click.
       if (masterGain) {
         masterGain.gain.setValueAtTime(0, audioCtx.currentTime);
-        masterGain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.2);
+        masterGain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + FADE_IN_S);
       }
 
       isActive = true;
       return true;
     } catch (e) {
       console.warn('Engine audio: could not start AudioContext', e);
+      // Tear down whatever was partially created so a retry starts fresh.
+      for (const { osc } of layers) {
+        try {
+          osc.stop();
+        } catch {
+          // Ignore cleanup errors.
+        }
+      }
+      layers.length = 0;
+      masterGain = null;
+      audioCtx = null;
       return false;
     }
   },
@@ -186,25 +223,37 @@ export default {
       const now = audioCtx.currentTime;
       // Fade out over 300ms.
       if (masterGain) {
-        masterGain.gain.setValueAtTime(masterGain.gain.value || 0.3, now);
-        masterGain.gain.linearRampToValueAtTime(0.001, now + 0.3);
+        const mg = masterGain;
+        mg.gain.setValueAtTime(mg.gain.value ?? 0.3, now);
+        mg.gain.linearRampToValueAtTime(0.001, now + FADE_OUT_S);
+
+        // Disconnect only after the fade ends — disconnecting on this tick
+        // would cut the ramp short and the fade would be inaudible.
+        setTimeout(() => {
+          try {
+            mg.disconnect();
+          } catch {
+            // Ignore errors during cleanup.
+          }
+        }, NODE_CLEANUP_MS);
       }
 
-      // Stop oscillators after the fade completes, then disconnect all nodes
-      // so Web Audio doesn't leak them (nodes persist until disconnected).
+      // Stop oscillators just after the fade; disconnect them on a later
+      // tick so nodes don't leak but the fade still plays out.
       for (const { osc, gainNode } of layers) {
         try {
-          osc.stop(now + 0.35);
-          osc.disconnect();
-          if (gainNode) gainNode.disconnect();
+          osc.stop(now + OSC_STOP_S);
         } catch {
           // Ignore errors during cleanup.
         }
-      }
-      try {
-        if (masterGain) masterGain.disconnect();
-      } catch {
-        // Ignore errors during cleanup.
+        setTimeout(() => {
+          try {
+            osc.disconnect();
+            if (gainNode) gainNode.disconnect();
+          } catch {
+            // Ignore errors during cleanup.
+          }
+        }, NODE_CLEANUP_MS);
       }
     } catch {
       // Ignore errors during cleanup.
@@ -213,6 +262,23 @@ export default {
     layers.length = 0;
     masterGain = null;
     isActive = false;
+  },
+
+  /**
+   * Fully tear down engine audio: stop playback, close the AudioContext and
+   * drop node references. Safe to call even when playback never started.
+   */
+  close() {
+    this.stop();
+    try {
+      if (audioCtx) {
+        audioCtx.close();
+      }
+    } catch {
+      // Ignore errors during teardown.
+    }
+    audioCtx = null;
+    masterGain = null;
   },
 
   /**
