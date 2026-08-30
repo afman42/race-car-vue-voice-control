@@ -123,7 +123,11 @@ test.describe("Engine & gears", () => {
     await page.goto("/");
     await clickButton(page, "Start Engine");
     // Speed should be > 0 after a few ticks.
-    await expect(dashboardTile(page, "Speed")).not.toContainText("0", {
+    await expect.poll(async () => {
+      const t = await dashboardTile(page, "Speed").textContent();
+      const n = parseInt(t?.match(/(\d+)/)?.[1] ?? "0", 10);
+      return n;
+    }).toBeGreaterThan(0, {
       timeout: 20_000,
     });
   });
@@ -385,7 +389,7 @@ test.describe("Status commands", () => {
     await page.goto("/");
     await clickButton(page, "Start Engine");
     await clickButton(page, "Lap Status");
-    await expect(page.locator(".status-text")).not.toBeEmpty({
+    await expect(page.locator(".status-text")).toContainText(/lap/i, {
       timeout: 5000,
     });
   });
@@ -394,7 +398,7 @@ test.describe("Status commands", () => {
     await page.goto("/");
     await clickButton(page, "Start Engine");
     await clickButton(page, "Temp Status");
-    await expect(page.locator(".status-text")).not.toBeEmpty({
+    await expect(page.locator(".status-text")).toContainText(/temp|°C/i, {
       timeout: 5000,
     });
   });
@@ -403,7 +407,7 @@ test.describe("Status commands", () => {
     await page.goto("/");
     await clickButton(page, "Start Engine");
     await clickButton(page, "Fuel Status");
-    await expect(page.locator(".status-text")).not.toBeEmpty({
+    await expect(page.locator(".status-text")).toContainText(/fuel|%/i, {
       timeout: 5000,
     });
   });
@@ -412,7 +416,7 @@ test.describe("Status commands", () => {
     await page.goto("/");
     await clickButton(page, "Start Engine");
     await clickButton(page, "Battery Status");
-    await expect(page.locator(".status-text")).not.toBeEmpty({
+    await expect(page.locator(".status-text")).toContainText(/battery|%/i, {
       timeout: 5000,
     });
   });
@@ -422,7 +426,7 @@ test.describe("Status commands", () => {
     await clickButton(page, "Rival Easy");
     await clickButton(page, "Start Engine");
     await clickButton(page, "Position");
-    await expect(page.locator(".status-text")).not.toBeEmpty({
+    await expect(page.locator(".status-text")).toContainText(/P[12]|position|rival/i, {
       timeout: 5000,
     });
   });
@@ -432,7 +436,7 @@ test.describe("Status commands", () => {
     await clickButton(page, "Start Engine");
     // Button label is just "Damage" (btn.damageStatus → "Damage")
     await clickButton(page, "Damage");
-    await expect(page.locator(".status-text")).not.toBeEmpty({
+    await expect(page.locator(".status-text")).toContainText(/damage|%/i, {
       timeout: 5000,
     });
   });
@@ -441,7 +445,7 @@ test.describe("Status commands", () => {
     await page.goto("/");
     await clickButton(page, "Start Engine");
     await clickButton(page, "Weather Status");
-    await expect(page.locator(".status-text")).not.toBeEmpty({
+    await expect(page.locator(".status-text")).toContainText(/weather|dry|cloudy|wet|storm/i, {
       timeout: 5000,
     });
   });
@@ -450,7 +454,7 @@ test.describe("Status commands", () => {
     await page.goto("/");
     await clickButton(page, "Start Engine");
     await clickButton(page, "Best Lap");
-    await expect(page.locator(".status-text")).not.toBeEmpty({
+    await expect(page.locator(".status-text")).toContainText(/lap|no lap|best/i, {
       timeout: 5000,
     });
   });
@@ -469,9 +473,9 @@ test.describe("Race progression", () => {
     await page.waitForTimeout(10_000);
     const currentFuel = await dashboardTile(page, "Fuel Level").textContent();
 
-    // Fuel should have decreased or stayed same — the display is a percentage.
-    // The initial shows "100%" and fuel drops by ~0.2/tick.
-    // Just verify it changed or is still showing a valid %.
+    const initialPct = parseInt(initialFuel.match(/(\d+)%/)?.[1] ?? "100", 10);
+    const currentPct = parseInt(currentFuel.match(/(\d+)%/)?.[1] ?? "100", 10);
+    expect(currentPct).toBeLessThanOrEqual(initialPct);
     expect(currentFuel).toMatch(/\d+%/);
   });
 
@@ -489,7 +493,11 @@ test.describe("Race progression", () => {
     await expect(dashboardTile(page, "Engine").first()).toContainText("ON");
 
     // 3. Dashboard shows values changing.
-    await expect(dashboardTile(page, "Speed")).not.toContainText("0", {
+    await expect.poll(async () => {
+      const t = await dashboardTile(page, "Speed").textContent();
+      const n = parseInt(t?.match(/(\d+)/)?.[1] ?? "0", 10);
+      return n;
+    }).toBeGreaterThan(0, {
       timeout: 30_000,
     });
 

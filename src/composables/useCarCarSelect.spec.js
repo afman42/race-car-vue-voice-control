@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useCar } from "./useCar";
-import { CAR_PRESETS } from "@/config";
 import ttsService from "@/services/textToSpeechService";
 
 describe("useCar - car selection", () => {

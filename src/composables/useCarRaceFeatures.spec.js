@@ -1,6 +1,6 @@
 // src/composables/useCarRaceFeatures.spec.js
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useCar } from "./useCar";
 import { CAR_SETTINGS, WEATHER_CONDITIONS, WEATHER_SHIFT } from "@/config";
 import { scheduleWeatherShift } from "./useCarSimulation";

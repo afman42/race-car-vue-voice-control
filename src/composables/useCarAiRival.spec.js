@@ -104,6 +104,24 @@ describe("useCar - AI rival", () => {
       expect(aiCurrentLap.value).toBeGreaterThan(startLap);
     });
 
+    it("banks at most one lap per tick — leftover time must not carry over", () => {
+      // Regression: currentLapTime was never reduced when a lap was banked, so a
+      // rolled lap target shorter than the accumulated time re-fired the while
+      // loop, banking several laps in a single tick.
+      vi.spyOn(Math, "random").mockReturnValue(0.5);
+      const { setAiDifficulty, runSimulationTick, aiLeaderboard } = useCar();
+      setAiDifficulty("HARD");
+
+      let previous = aiLeaderboard.value.length;
+      for (let i = 0; i < 100; i++) {
+        runSimulationTick();
+        const added = aiLeaderboard.value.length - previous;
+        expect(added).toBeLessThanOrEqual(1);
+        previous = aiLeaderboard.value.length;
+      }
+      expect(previous).toBeGreaterThan(0); // laps actually banked
+    });
+
     it("a harder rival posts faster laps than an easier one", () => {
       // Remove variance from the equation so the comparison is deterministic.
       vi.spyOn(Math, "random").mockReturnValue(0.5);

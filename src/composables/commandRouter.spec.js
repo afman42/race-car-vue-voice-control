@@ -232,14 +232,18 @@ describe("matchCommand", () => {
   });
 
   describe("fuzzy matching", () => {
-    it("tolerates minor speech-recognition slips", () => {
-      // "engin" -> "engine", "ovrtake" -> "overtake"
-      expect(matchCommand("start engin")).toBe("startEngine");
+    it("tolerates slips on longer keywords (e.g. ovrtake -> overtake)", () => {
+      // "ovrtake" (7) vs "overtake" (8) — keyword >= FUZZY_MIN_LENGTH, dist 1.
       expect(matchCommand("ovrtake")).toBe("overtake");
     });
 
+    it("does not match short-word slips (tighter fuzzy gate)", () => {
+      // FUZZY_MIN_LENGTH now 8 — short words require exact.
+      expect(matchCommand("start engin")).toBeNull();
+      expect(matchCommand("pit stp")).toBeNull();
+    });
+
     it("matches multi-word commands with a single mangled word", () => {
-      expect(matchCommand("pit stp")).toBe("pitStop");
       expect(matchCommand("soft tire")).toBe("tireSoft");
     });
 

@@ -27,7 +27,9 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { browserName: "chromium" },
+      // Full chromium build (installed by `playwright install chromium`),
+      // avoids the separate headless-shell download.
+      use: { browserName: "chromium", channel: "chromium" },
     },
   ],
 });
