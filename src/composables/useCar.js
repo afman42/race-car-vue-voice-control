@@ -7,7 +7,7 @@
 //
 // Every component that calls useCar() gets the same reactive singleton.
 
-import { ref, computed, watch, onUnmounted, getCurrentInstance } from "vue";
+import { computed, watch, onUnmounted, getCurrentInstance } from "vue";
 import {
   CAR_SETTINGS,
   CAR_PRESETS,
@@ -15,8 +15,7 @@ import {
   TIRE_COMPOUNDS,
   ERS_MODES,
   WEATHER_CONDITIONS,
-  WEATHER_SHIFT,
-  TIRE_TEMP,
+  DRS_DETECTION,
 } from "@/config";
 import audioService from "@/services/audioService";
 import engineAudioService from "@/services/engineAudioService";
@@ -39,8 +38,6 @@ import {
   overtakeActive,
   tireLife,
   tireTemp,
-  tireTempStatus,
-  tireTempWarned,
   tireCompound,
   fuelLevel,
   batteryLevel,
@@ -65,9 +62,8 @@ import {
   lowBatteryWarned,
   overheatWarned,
   damageWarned,
+  tireGripFactor,
   findSegmentAtProgress,
-  compoundConfig,
-  ersConfig,
   weatherConfig,
   normalizedRpmRatio,
   statusWord,
@@ -77,7 +73,6 @@ import {
   setSimulationInterval,
   clearOvertakeTimeout,
   setOvertakeTimeout,
-  setLastSegmentIndex,
   setSimWatcherRegistered,
   simWatcherRegistered,
   // Qualifying state
@@ -102,7 +97,6 @@ import { useQualifying } from "./useQualifying";
 // Re-export for UI and tests that import from useCar.
 export { findSegmentAtProgress, _resetSingletons } from "./useCarState";
 
-// This function is our composable.
 export function useCar() {
   // --- COMPUTED PROPERTIES ---
   const isLowBattery = computed(
@@ -148,15 +142,23 @@ export function useCar() {
 
   const speedKmh = computed(() => {
     const ratio = normalizedRpmRatio();
-    const gr = currentGear.value > 0
+    const gearRatio = currentGear.value > 0
       ? (CAR_SETTINGS.GEAR_RATIOS[currentGear.value] || 0.5)
       : 0;
+    const grip = tireGripFactor();
+    // Same factor stack as updateLapProgress in useCarSimulation.js:
+    // lapProgressBase × (0.3 + ratio×gear) × weather grip × pace × tire grip,
+    // then corner cap and DRS boost — so the speedometer tracks real pace.
+    const rawSpeed =
+      effectiveStats.value.lapProgressBase *
+      (0.3 + ratio * gearRatio) *
+      weatherConfig().gripFactor *
+      paceFactor.value *
+      grip;
     const seg = findSegmentAtProgress(lapProgress.value);
-    const cf = seg.segment.type === "corner" ? effectiveStats.value.cornerSpeedCap : 1.0;
-    const drsBoost = drsStatus.value && seg.segment.type === "straight" ? 1.12 : 1.0;
-    const base = 50 + ratio * gr * 200;
-    const raw = base * cf * drsBoost * selectedCar.value.stats.speedMul * (weatherConfig().gripFactor || 1.0) * paceFactor.value;
-    return Math.round(raw);
+    const cornerFactor = seg.segment.type === "corner" ? effectiveStats.value.cornerSpeedCap * grip : 1.0;
+    const drsBoost = drsStatus.value && seg.segment.type === "straight" ? DRS_DETECTION.DRS_BOOST : 1.0;
+    return Math.round(rawSpeed * cornerFactor * drsBoost * CAR_SETTINGS.SPEED_KMH_SCALE);
   });
 
   const playerProgress = computed(() =>
@@ -232,6 +234,7 @@ export function useCar() {
     }
 
     clearOvertakeTimeout();
+    overtakeActive.value = false;
     engineStatus.value = false;
     rpm.value = 0;
     currentGear.value = 0;
@@ -256,11 +259,7 @@ export function useCar() {
       message = t("msg.drsNotEligible");
     } else {
       drsStatus.value = true;
-      try {
-        await audioService.playSound("drsOn");
-      } catch (error) {
-        console.error("Failed to play DRS activation sound.", error);
-      }
+      await audioService.playSound("drsOn");
       message = t("msg.drsEnabled");
     }
 
@@ -275,11 +274,7 @@ export function useCar() {
       message = t("msg.drsAlreadyDisabled");
     } else {
       drsStatus.value = false;
-      try {
-        await audioService.playSound("drsOff");
-      } catch (error) {
-        console.error("Failed to play DRS deactivation sound.", error);
-      }
+      await audioService.playSound("drsOff");
       message = t("msg.drsDisabled");
     }
 
@@ -302,16 +297,25 @@ export function useCar() {
 
     overtakeActive.value = true;
     batteryLevel.value -= CAR_SETTINGS.OVERTAKE_BATTERY_COST;
-    rpm.value += CAR_SETTINGS.RPM_OVERTAKE_BOOST;
+    // Clamp to RPM_MAX and restore the pre-boost value at expiry so the
+    // boost never double-counts when the climb already erased it.
+    const rpmBeforeBoost = rpm.value;
+    rpm.value = Math.min(CAR_SETTINGS.RPM_MAX, rpm.value + CAR_SETTINGS.RPM_OVERTAKE_BOOST);
     message = t("msg.overtakeActivated");
 
     await audioService.playSound("overtakeOn");
     await ttsService.speak(message);
 
+    // Re-check after the awaits: the engine may have stalled/overheated
+    // or stopped mid-flight; don't arm a boost timer for a dead engine.
+    if (!engineStatus.value || !overtakeActive.value) return message;
+
     clearOvertakeTimeout();
     const timeout = setTimeout(async () => {
       overtakeActive.value = false;
-      rpm.value = engineStatus.value ? CAR_SETTINGS.RPM_IDLE : 0;
+      rpm.value = engineStatus.value
+        ? Math.max(CAR_SETTINGS.RPM_IDLE, rpmBeforeBoost)
+        : 0;
       await ttsService.speak(t("msg.overtakeFinished"));
     }, CAR_SETTINGS.OVERTAKE_DURATION_MS);
     setOvertakeTimeout(timeout);
@@ -563,10 +567,13 @@ export function useCar() {
   if (getCurrentInstance()) {
     onUnmounted(() => {
       clearSimulationInterval();
+      clearOvertakeTimeout();
       engineAudioService.stop();
+      if (typeof engineAudioService.close === "function") {
+        engineAudioService.close();
+      }
     });
   }
-
   // --- EXPOSE PUBLIC API ---
   return {
     // State
@@ -613,7 +620,6 @@ export function useCar() {
     computedQualifyingPosition,
     // Tire temp state
     tireTemp,
-    tireTempStatus,
     tireTempDisplayStatus,
     // DRS eligibility
     drsEligible,
@@ -638,7 +644,6 @@ export function useCar() {
     standings,
     playerLoopPos,
     rivalLoopPos,
-    aiConfig: ai.config,
     // Actions
     startEngine,
     stopEngine,

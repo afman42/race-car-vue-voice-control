@@ -64,8 +64,13 @@ export const CAR_SETTINGS = {
   DAMAGE_MINOR_THRESHOLD: 20,
   DAMAGE_MAJOR_THRESHOLD: 50,
   DAMAGE_CRITICAL_THRESHOLD: 80,
-  // At 100 damage the car loses this fraction of its pace (0.4 => 40% slower).
+  // Fraction of pace lost at 100 damage. At full damage the car keeps
+  // (1 - DAMAGE_MAX_PACE_PENALTY) of its potential speed.
   DAMAGE_MAX_PACE_PENALTY: 0.4,
+  // Display-only scale converting simulation pace (progress units per tick) to
+  // a plausible km/h speedometer reading. Tuned so a balanced car at full pace
+  // on a straight reads ~410 km/h. Must stay in sync with speedKmh in useCar.js.
+  SPEED_KMH_SCALE: 22,
 
   // AI rival: the reference lap time (ms) a perfect rival targets. Difficulty
   // scales this by paceFactor (higher = faster) and adds random variance.
@@ -101,6 +106,10 @@ export const CAR_SETTINGS = {
   CORNER_SPEED_CAP: 0.55, // fraction of straight speed while cornering
   // Target gears for each corner type (downshift target).
   CORNER_TARGET_GEARS: { slow: 2, medium: 3, fast: 4 },
+  // Shift-light LED thresholds (RPM). LED bands start this far below the
+  // drop threshold and step this far apart across the LED row.
+  LED_BAND_RPM: 200,
+  LED_STEP_RPM: 600,
 };
 
 // Preset cars the player can choose before a race. Each car modifies the
@@ -209,6 +218,8 @@ export const TIRE_TEMP = {
 export const DRS_DETECTION = {
   DETECTION_SEGMENT: 0, // main straight
   ELIGIBILITY_GAP_LAPS: 0.05, // ~1 second at ~20s/lap
+  // Speed multiplier while DRS is open on a straight (1.0 = no boost).
+  DRS_BOOST: 1.12,
 };
 
 // Pit window strategy projects tire-wear and fuel-consumption rates to
@@ -234,3 +245,15 @@ export const WEATHER_SHIFT = {
   CHANGE_LAP_MAX: 8, // latest lap a shift can happen
   FORECAST_LAPS: 2,   // how many laps in advance to announce the incoming change
 };
+
+// Dev-time invariant checks. Throws on structural corruption (track layout
+// sums, gear-array/GEAR_COUNT sync). Called from main.js at startup.
+export function validateConfig() {
+  const trackSum = CAR_SETTINGS.TRACK_LAYOUT.reduce((sum, seg) => sum + seg.length, 0);
+  if (trackSum !== CAR_SETTINGS.LAP_DISTANCE) {
+    throw new Error(`TRACK_LAYOUT lengths sum to ${trackSum}, expected LAP_DISTANCE ${CAR_SETTINGS.LAP_DISTANCE}`);
+  }
+  if (CAR_SETTINGS.GEAR_RATIOS.length !== CAR_SETTINGS.GEAR_COUNT + 1) {
+    throw new Error(`GEAR_RATIOS has ${CAR_SETTINGS.GEAR_RATIOS.length} entries, expected GEAR_COUNT (${CAR_SETTINGS.GEAR_COUNT}) + neutral`);
+  }
+}

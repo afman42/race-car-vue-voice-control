@@ -80,8 +80,8 @@ const tick = () => {
 
   currentLapTime.value += CAR_SETTINGS.LAP_TIME_PER_TICK_MS;
   lapProgress.value = Math.min(1, currentLapTime.value / lapTarget.value);
-
   while (currentLapTime.value >= lapTarget.value && !finished.value && !qualifyingFinished.value) {
+    currentLapTime.value -= lapTarget.value;
     recordLap(currentLap.value, lapTarget.value);
 
     // Track qualifying results for AI (only during qualifying mode)
@@ -90,7 +90,7 @@ const tick = () => {
       if (qualifyingBestLap.value === null || time < qualifyingBestLap.value) {
         qualifyingBestLap.value = time;
       }
-      qualifyingResults.value.push({ lap: currentLap.value, time });
+      qualifyingResults.value = [...qualifyingResults.value, { lap: currentLap.value, time }];
 
       // Check qualifying end (3 laps)
       if (qualifyingResults.value.length >= QUALIFYING.LAPS) {

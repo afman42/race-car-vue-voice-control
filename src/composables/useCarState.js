@@ -16,19 +16,19 @@ import {
   WEATHER_CONDITIONS,
   QUALIFYING,
   TIRE_TEMP,
-  DRS_DETECTION,
 } from "@/config";
 import audioService from "@/services/audioService";
 import { t } from "@/i18n";
 import { useAiRival } from "@/composables/useAiRival";
 
 // Maps a canonical status label to its i18n key for spoken output.
-export const STATUS_KEYS = {
+const STATUS_KEYS = {
   Cold: "status.cold",
   Optimal: "status.optimal",
   Used: "status.used",
   Worn: "status.worn",
   Hot: "status.hot",
+  Overheated: "status.overheated",
   Critical: "status.critical",
   None: "status.none",
   Minor: "status.minor",
@@ -73,7 +73,6 @@ export const carDamage = ref(0);
 
 // Tire temperature (degrees). Starts at optimal baseline, heats while driving.
 export const tireTemp = ref(TIRE_TEMP.BASELINE);
-export const tireTempStatus = ref("Optimal");
 export const tireTempWarned = ref(false);
 
 // DRS eligibility — computed each tick when the player enters the detection zone.
@@ -83,6 +82,9 @@ export const drsEligible = ref(false);
 export const pitWindowStart = ref(null); // lap number to recommend pitting
 export const pitWindowVisible = ref(false); // show the pit window indicator
 export const pitWindowUrgent = ref(false); // true = "box now"
+let pitUrgentWarned = false;
+export const getPitUrgentWarned = () => pitUrgentWarned;
+export const setPitUrgentWarned = (v) => { pitUrgentWarned = v; };
 
 // Sector timing (3 sectors per lap)
 export const sectorTimes = ref([0, 0, 0]); // current lap sector times
@@ -100,7 +102,6 @@ export const raceMode = ref("race"); // "race" | "qualifying"
 export const qualifyingLapsRemaining = ref(QUALIFYING.LAPS);
 export const qualifyingResults = ref([]); // { lap, time } for player
 export const qualifyingBestLap = ref(null);
-export const qualifyingPosition = ref(1); // 1 or 2 based on quali comparison
 
 // Selected car preset
 export const selectedCar = ref(CAR_PRESETS[1]); // default: Balanced
@@ -126,8 +127,8 @@ export const ai = useAiRival();
 
 // Module-scoped variables for the simulation lifecycle.
 export let simulationInterval = null;
-export let overtakeTimeout = null;
-export let lastSegmentIndex = -1;
+let overtakeTimeout = null;
+let lastSegmentIndex = -1;
 export let simWatcherRegistered = false;
 
 // Warning latches — each crossing triggers exactly one voice alert.
@@ -189,15 +190,16 @@ export const paceFactor = computed(() => {
   return Math.max(0, 1 - penalty);
 });
 
-// Configuration helpers
+// Configuration helpers (label→config Maps built once to avoid per-tick Object.values allocation)
+const COMPOUND_BY_LABEL = new Map(Object.values(TIRE_COMPOUNDS).map((c) => [c.label, c]));
+const ERS_BY_LABEL = new Map(Object.values(ERS_MODES).map((m) => [m.label, m]));
+const WEATHER_BY_LABEL = new Map(Object.values(WEATHER_CONDITIONS).map((w) => [w.label, w]));
+
 export const compoundConfig = () =>
-  Object.values(TIRE_COMPOUNDS).find(
-    (c) => c.label === tireCompound.value,
-  ) || TIRE_COMPOUNDS.MEDIUM;
+  COMPOUND_BY_LABEL.get(tireCompound.value) || TIRE_COMPOUNDS.MEDIUM;
 
 export const ersConfig = () =>
-  Object.values(ERS_MODES).find((m) => m.label === ersMode.value) ||
-  ERS_MODES.BALANCED;
+  ERS_BY_LABEL.get(ersMode.value) || ERS_MODES.BALANCED;
 
 // Compute tire temperature status label from raw temperature value.
 export const computeTireTempStatus = (temp) => {
@@ -217,9 +219,18 @@ export const sectorAtProgress = (progress) => {
   return 3;
 };
 
+// Tire temperature grip factor: cold or overheated tires reduce pace.
+// Shared by the simulation tick (useCarSimulation) and the speed display
+// (useCar) so both use the same grip model.
+export const tireGripFactor = () => {
+  if (tireTemp.value < TIRE_TEMP.COLD_THRESHOLD) return TIRE_TEMP.GRIP_COLD_FACTOR;
+  if (tireTemp.value <= TIRE_TEMP.OPTIMAL_MAX) return TIRE_TEMP.GRIP_OPTIMAL_FACTOR;
+  if (tireTemp.value <= TIRE_TEMP.CRITICAL_TEMP) return TIRE_TEMP.GRIP_HOT_FACTOR;
+  return TIRE_TEMP.GRIP_COLD_FACTOR;
+};
+
 export const weatherConfig = () =>
-  Object.values(WEATHER_CONDITIONS).find((w) => w.label === weather.value) ||
-  WEATHER_CONDITIONS.DRY;
+  WEATHER_BY_LABEL.get(weather.value) || WEATHER_CONDITIONS.DRY;
 
 export const normalizedRpmRatio = () => {
   const rpmRatio =
@@ -236,7 +247,7 @@ export function _resetSingletons() {
   clearSimulationInterval();
   clearOvertakeTimeout();
   lastSegmentIndex = -1;
-  simWatcherRegistered = false;
+  if (import.meta.env.MODE === "test") simWatcherRegistered = false;
   engineStatus.value = false;
   rpm.value = 0;
   currentGear.value = 0;
@@ -264,7 +275,6 @@ export function _resetSingletons() {
   selectedCar.value = CAR_PRESETS[1];
   // Tire temp reset
   tireTemp.value = TIRE_TEMP.BASELINE;
-  tireTempStatus.value = "Optimal";
   tireTempWarned.value = false;
   // DRS reset
   drsEligible.value = false;
@@ -272,6 +282,7 @@ export function _resetSingletons() {
   pitWindowStart.value = null;
   pitWindowVisible.value = false;
   pitWindowUrgent.value = false;
+  pitUrgentWarned = false;
   // Sector timing reset
   sectorTimes.value = [0, 0, 0];
   bestSectorTimes.value = [null, null, null];
@@ -286,7 +297,6 @@ export function _resetSingletons() {
   qualifyingLapsRemaining.value = QUALIFYING.LAPS;
   qualifyingResults.value = [];
   qualifyingBestLap.value = null;
-  qualifyingPosition.value = 1;
   lowFuelWarned.value = false;
   lowBatteryWarned.value = false;
   overheatWarned.value = false;
