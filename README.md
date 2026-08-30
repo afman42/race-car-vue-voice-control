@@ -36,7 +36,7 @@ pnpm test:run         # Run 236 unit tests (Vitest)
 pnpm test:e2e         # Run 67 end-to-end tests (Playwright)
 ```
 
-> **Requirements:** Chrome browser, microphone access, HTTPS (auto-configured with a self-signed cert), Node.js 18+, pnpm.
+> **Requirements:** Chrome browser, microphone access, HTTPS (auto-configured with a self-signed cert), Node.js 20.19+ / 22.12+, pnpm.
 
 ---
 
@@ -76,7 +76,7 @@ src/
 ├── App.vue                  # Root component (global font & dark theme)
 │
 ├── components/              # Vue SFCs (template + script + styles)
-│   ├── RaceControl.vue      # Main dashboard UI (540 lines)
+│   ├── RaceControl.vue      # Main dashboard UI (417 lines)
 │   ├── RaceControl.css      # Dashboard styles (extracted for maintainability)
 │   ├── TrackMap.vue         # SVG track map with player/rival markers
 │   ├── RpmGauge.vue         # RPM gauge with needle + shift lights
@@ -87,7 +87,7 @@ src/
 ├── composables/             # Vue 3 composables (reactive logic)
 │   ├── useCarState.js       # Singleton state refs + helpers
 │   ├── useCarSimulation.js  # Simulation tick (physics engine)
-│   ├── useCar.js            # Slim orchestrator (~620 lines)
+│   ├── useCar.js            # Slim orchestrator (683 lines)
 │   ├── useRaceControl.js    # UI orchestration, command routing, speech
 │   ├── useAiRival.js        # AI rival lap-time generator
 │   ├── useQualifying.js     # Qualifying mode logic (extracted)
@@ -129,7 +129,7 @@ src/
 
 | Suite | Tests | Runner |
 |---|---|---|
-| **Unit tests** | 236 across 11 files | Vitest + jsdom |
+| **Unit tests** | 249 across 12 files | Vitest + jsdom |
 | **E2E tests** | 67 across 2 files | Playwright (Chromium) |
 
 ---

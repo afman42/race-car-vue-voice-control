@@ -8,7 +8,7 @@
 | **Microphone access** | Needed for voice commands |
 | **Earphones** | Recommended for best audio feedback experience |
 | **HTTPS** | Required by Web Speech API — dev server auto-configures with a self-signed certificate |
-| **Node.js 18+** | Runtime |
+| **Node.js 20.19+ / 22.12+** | Runtime |
 | **pnpm** | Package manager |
 
 ---
@@ -40,7 +40,6 @@ Open **https://localhost:5173** in Chrome. Your browser will show a security war
 | `pnpm preview` | Preview the production build locally |
 | `pnpm test` | Run unit tests in watch mode |
 | `pnpm test:run` | Run all unit tests once (236 tests) |
-| `pnpm test:ui` | Open Vitest interactive UI dashboard |
 | `pnpm test:e2e` | Run Playwright e2e tests (67 tests, auto-starts dev server) |
 
 ---
@@ -75,7 +74,7 @@ Open **https://localhost:5173** in Chrome. Your browser will show a security war
 
 | Package | Version | Purpose |
 |---|---|---|
-| `vue` | ^3.4 | UI framework (Composition API, `<script setup>`) |
+| `vue` | ^3.5 | UI framework (Composition API, `<script setup>`) |
 
 ### Dev (7 packages)
 

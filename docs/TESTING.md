@@ -2,16 +2,15 @@
 
 The project runs two test suites: **unit tests** (Vitest) and **end-to-end tests** (Playwright).
 
-> **Current counts:** 236 unit tests (11 files) + 67 e2e tests (2 files) = **303 total tests**
+> **Current counts:** 249 unit tests (12 files) + 67 e2e tests (2 files) = **316 total tests**
 
 ---
 
 ## Quick Commands
 
 ```bash
-pnpm test:run         # Unit tests (single run) — 236 tests
+pnpm test:run         # Unit tests (single run) — 249 tests
 pnpm test             # Unit tests in watch mode
-pnpm test:ui          # Vitest UI dashboard (interactive)
 pnpm test:e2e         # E2E tests — 67 tests (auto-starts dev server)
 ```
 
@@ -19,19 +18,20 @@ pnpm test:e2e         # E2E tests — 67 tests (auto-starts dev server)
 
 ## Test File Map
 
-### Unit Tests — Vitest (236 tests, 11 files)
+### Unit Tests — Vitest (249 tests, 11 files)
 
 | Test File | Tests | What It Covers |
 |---|---|---|
-| `src/composables/useCar.spec.js` | 22 | Engine, DRS, overtake, fuel mix, tire status, pit stop, car selection, qualifying |
+| `src/composables/useCar.spec.js` | 34 | Engine, DRS, overtake, fuel mix, tire status, pit stop, car selection, qualifying |
 | `src/composables/useCarFeatures.spec.js` | 16 | Tire compounds, ERS modes, engine temperature, lap timer, help, reset |
 | `src/composables/useCarSimulation.spec.js` | 20 | Fuel consumption, tire wear, battery recharge, autoShift, stall, overheat, pitting guard |
-| `src/composables/useCarRaceFeatures.spec.js` | 22 | Lap timing, leaderboard, weather effects, weather shifts, damage |
-| `src/composables/useCarAiRival.spec.js` | 15 | AI difficulty, lap generation, leaderboard, status query, qualifying mode |
-| `src/composables/useCarStandings.spec.js` | 7 | Race standings, position callout, track position, solo vs. rival |
+| `src/composables/useCarRaceFeatures.spec.js` | 29 | Lap timing, leaderboard, weather effects, weather shifts, damage |
+| `src/composables/useCarAiRival.spec.js` | 22 | AI difficulty, lap generation, leaderboard, status query, qualifying mode |
+| `src/composables/useCarStandings.spec.js` | 7 |
+| `src/composables/useCarSimulationEdge.spec.js` | 6 | Edge cases: sectors, lap wrap, qualifying end, DRS | Race standings, position callout, track position, solo vs. rival |
 | `src/composables/useCarCarSelect.spec.js` | 11 | Car selection, stat comparisons (fuel, wear, corner speed, straight speed) |
 | `src/composables/commandRouter.spec.js` | 33 | Exact matching, fuzzy matching, locale-specific, rejection, Levenshtein |
-| `src/components/RaceControl.spec.js` | 30 | Dashboard render, voice/manual commands, segment display, car modal, standings |
+| `src/components/RaceControl.spec.js` | 37 | Dashboard render, voice/manual commands, segment display, car modal, standings |
 | `src/utils/raceStanding.spec.js` | 15 | totalProgress, loopPosition, computeStandings, formatPosition |
 | `src/utils/formatLapTime.spec.js` | 4 | Lap time formatting, null/undefined, rounding |
 

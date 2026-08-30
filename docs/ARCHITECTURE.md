@@ -10,7 +10,7 @@ src/
 ├── App.vue                      # Root component (global font & dark theme)
 │
 ├── components/                  # Vue Single-File Components
-│   ├── RaceControl.vue          # Main dashboard UI (~540 lines)
+│   ├── RaceControl.vue          # Main dashboard UI (~417 lines)
 │   ├── RaceControl.css          # Dashboard styles (extracted for readability)
 │   ├── TrackMap.vue             # SVG track map with player/rival markers
 │   ├── RpmGauge.vue             # RPM gauge with needle animation
@@ -24,7 +24,7 @@ src/
 ├── composables/                 # Vue 3 reactive logic
 │   ├── useCarState.js           # Singleton state refs + helpers (source of truth)
 │   ├── useCarSimulation.js      # Core simulation tick (physics engine)
-│   ├── useCar.js                # Slim orchestrator (~620 lines)
+│   ├── useCar.js                # Slim orchestrator (683 lines)
 │   ├── useRaceControl.js        # UI orchestration, speech, command routing
 │   ├── useAiRival.js            # AI rival lap-time generator
 │   ├── useQualifying.js         # Qualifying mode logic (extracted)
@@ -184,19 +184,17 @@ Engine ON or AI enabled (and not pitting)
     ↓
 runSimulationTick():
     ├── Skip if pitting
-    ├── Fuel consumption (RPM × mix rate)
-    ├── Tire wear (RPM × compound × weather × tire temp factor)
-    ├── Battery recharge (ERS mode)
+    ├── Fuel / tire wear / battery recharge (gated: engine must be running)
     ├── Engine temperature (RPM + overtake - cooling + weather bias)
     ├── Tire temperature (driving heat - coasting cool + weather bias)
-    ├── DRS eligibility check (distance to rival on detection segment)
-    ├── Pit window projection (tire wear + fuel per lap)
-    ├── Weather shift check (forecast + apply)
     ├── Damage accrual (overheat + worn tires + overheated tires)
     ├── Lap progress (RPM × gear × grip × tire temp × DRS boost)
+    ├── Weather shift check (forecast + apply)
+    ├── DRS eligibility check (distance to rival on detection segment)
+    ├── Pit window projection (tire wear + fuel per lap)
     ├── AI rival tick (independent lap-time generator)
     ├── Warning checks (fuel, battery, temp, damage, tire temp)
-    ├── RPM climb
-    ├── Track-aware gear shifting (autoShift)
-    └── Engine stall / overheat check
+    ├── RPM climb (engine on, not overheating)
+    ├── Track-aware gear shifting (autoShift — always)
+    └── Engine stall (fuel ≤ 0) / overheat (≥ 140°C) check
 ```

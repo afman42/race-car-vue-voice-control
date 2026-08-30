@@ -11,21 +11,19 @@ A full 10-lap race takes approximately **3.3 minutes** of simulation time.
 ```
 runSimulationTick():
    1. Skip if pitting
-   2. Fuel consumption
-   3. Tire wear (compound × weather × temperature)
-   4. Battery recharge (ERS mode)
-   5. Engine temperature
-   6. Tire temperature (new — heats while driving, cools while coasting)
-   7. Damage accrual (overheat + worn tires + overheated tires)
-   8. DRS eligibility (new — checks gap at detection zone)
-   9. Pit window projection (new — tire/fuel wear rates per lap)
-  10. Weather shift check (forecast + apply)
-  11. Lap progress + sector timing
-  12. AI rival tick
-  13. Warning checks (fuel, battery, temp, damage, tire temp)
-  14. RPM climb
-  15. Track-aware gear shifting (autoShift)
-  16. Engine stall / overheat check
+   2. Fuel / tire wear / battery recharge (gated: engine must be running)
+   3. Engine temperature
+   4. Tire temperature
+   5. Damage accrual (overheat + worn tires + overheated tires)
+   6. Lap progress + sector timing
+   7. Weather shift check (forecast + apply)
+   8. DRS eligibility
+   9. Pit window projection
+  10. AI rival tick
+  11. Warning checks (fuel, battery, temp, damage, tire temp)
+  12. RPM climb (engine on, not overheating)
+  13. Track-aware gear shifting (autoShift — always)
+  14. Engine stall (fuel ≤ 0) / overheat (≥ 140°C) check
 ```
 
 ---
@@ -58,7 +56,7 @@ Degrades from 100% → Worn. Scales with RPM, compound, weather, and tire temper
 - **Hot** (110–130°C): wear 1.3× faster
 - **Overheated** (>130°C): rapid wear + damage accrual
 
-### 🌡️ Tire Temperature *(New Feature)*
+### 🌡️ Tire Temperature
 Heats while driving (0.6°C/tick), cools while coasting (0.5°C/tick), with ambient drift toward 90°C baseline. Weather adds bias: rain cools, dry heat builds.
 
 | Temp Range | Status | Grip Effect |
@@ -141,11 +139,11 @@ A 3-lap shootout where both player and AI set their fastest lap:
 - AI generates 3 laps independently
 - Best lap determines grid position (P1 or P2)
 - No weather shifts during qualifying
-- Race simulation starts with the qualifying grid
+- Qualifying grid position is shown in the UI; the race simulation itself always starts from lap 1 at progress 0
 
 ---
 
-## DRS Detection Zone *(New Feature)*
+## DRS Detection Zone
 
 DRS (Drag Reduction System) is only available when:
 
@@ -153,11 +151,11 @@ DRS (Drag Reduction System) is only available when:
 2. The car is on **detection segment** (main straight, segment 0)
 3. The **gap to the rival** is ≤ 0.05 lap units (~1 second)
 
-Once eligible, DRS stays active until the detection segment is exited or the lap completes. Without AI enabled, DRS works freely.
+Once activated (`drsStatus`), DRS stays active until manually disabled, engine stop, stall, overheat, or session end. Eligibility (`drsEligible`) clears on detection-segment exit or lap completion. Without AI enabled, DRS is always eligible.
 
 ---
 
-## Pit Window Strategy *(New Feature)*
+## Pit Window Strategy
 
 The simulation projects tire wear and fuel consumption rates to recommend optimal pit timing:
 
