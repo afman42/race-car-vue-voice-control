@@ -7,6 +7,7 @@
         :key="ctrl.command"
         class="ctrl-button"
         :class="{ 'active-difficulty': ctrl.command === activeAiCommand }"
+        :aria-pressed="isToggleCommand(ctrl.command) ? String(ctrl.command === activeAiCommand) : null"
         @click="$emit('command', ctrl.command)"
       >
         {{ t(ctrl.labelKey) }}
@@ -18,13 +19,18 @@
 <script setup>
 import { useI18n } from "@/i18n";
 
-defineProps({
+const props = defineProps({
   activeAiCommand: { type: String, default: null },
 });
 
 defineEmits(["command"]);
 
 const { t } = useI18n();
+
+// Commands that select a persistent state (AI difficulty). Only these get
+// toggle-button semantics; the rest are momentary actions.
+const TOGGLE_COMMANDS = new Set(["aiEasy", "aiMedium", "aiHard", "aiRandom"]);
+const isToggleCommand = (command) => TOGGLE_COMMANDS.has(command);
 
 const manualControls = [
   { labelKey: "btn.startEngine", command: "startEngine" },

@@ -21,11 +21,7 @@
     </div>
 
     <div class="status-panel">
-      <div
-        :class="['light', { active: isListening }]"
-        role="status"
-        :aria-label="isListening ? t('ui.radioOpen') : t('ui.radioClosed')"
-      ></div>
+      <div :class="['light', { active: isListening }]"></div>
       <p class="status-text" role="status" aria-live="polite">
         {{ statusMessage }}
       </p>
@@ -69,7 +65,7 @@
       }}</span>
     </div>
 
-    <div class="position-badge" role="status" aria-live="polite">
+    <div class="position-badge">
       <span class="pos-label">{{ t("ui.position") }}</span>
       <span class="pos-value">{{ positionLabel }}</span>
       <span class="pos-gap">{{ gapText }}</span>
@@ -125,8 +121,8 @@
             :key="i"
             class="shift-led"
             :class="{
-              active: rpm > CAR_SETTINGS.GEAR_DROP_RPM - 200 + (i - 1) * 600,
-              blink: rpm >= CAR_SETTINGS.GEAR_SHIFT_RPM - 200 && rpm < CAR_SETTINGS.GEAR_SHIFT_RPM,
+              active: rpm > CAR_SETTINGS.GEAR_DROP_RPM - CAR_SETTINGS.LED_BAND_RPM + (i - 1) * CAR_SETTINGS.LED_STEP_RPM,
+              blink: rpm >= CAR_SETTINGS.GEAR_SHIFT_RPM - CAR_SETTINGS.LED_BAND_RPM && rpm < CAR_SETTINGS.GEAR_SHIFT_RPM,
               shift: rpm >= CAR_SETTINGS.GEAR_SHIFT_RPM,
             }"
           ></span>

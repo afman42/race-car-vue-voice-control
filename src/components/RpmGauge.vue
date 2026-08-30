@@ -4,7 +4,7 @@
       class="rpm-gauge"
       viewBox="0 0 100 57"
       role="img"
-      :aria-label="`Engine RPM ${rpm.toFixed(0)}`"
+      :aria-label="t('ui.rpmStatus', { rpm: rpm.toFixed(0) })"
     >
       <path class="gauge-bg" d="M10 50 A 40 40 0 0 1 90 50"></path>
       <path
@@ -25,6 +25,9 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { CAR_SETTINGS } from "@/config";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const props = defineProps({
   rpm: { type: Number, required: true },
@@ -44,7 +47,10 @@ onMounted(() => {
 
 const rpmNeedleOffset = computed(() => {
   if (gaugeCircumference.value === 0) return gaugeCircumference.value;
-  const rpmPercentage = props.rpm / CAR_SETTINGS.RPM_MAX;
+  const rpmPercentage = Math.min(
+    1,
+    Math.max(0, props.rpm / CAR_SETTINGS.RPM_MAX),
+  );
   return gaugeCircumference.value * (1 - rpmPercentage);
 });
 </script>

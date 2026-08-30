@@ -177,11 +177,7 @@ const segmentMarkers = computed(() => {
   opacity: 0.7;
 }
 .map-legend {
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-.track-svg:hover .map-legend {
-  opacity: 0.8;
+  opacity: 0.85;
 }
 .legend-label {
   fill: #ccc;

@@ -8,7 +8,7 @@
   >
     <h3>{{ title }}</h3>
     <ol>
-      <li v-for="(entry, index) in entries" :key="`${entry.lap}-${index}`">
+      <li v-for="(entry, index) in entries" :key="`${entry.lap}-${entry.time}`">
         <span class="lb-rank">{{ index + 1 }}</span>
         <span class="lb-lap">{{ t("ui.lapShort", { lap: entry.lap }) }}</span>
         <span class="lb-time">{{ formatLapTime(entry.time) }}</span>

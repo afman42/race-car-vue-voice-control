@@ -384,7 +384,7 @@ h1 {
   margin-top: 2rem;
   padding-top: 1rem;
   border-top: 1px solid #444;
-  color: #888;
+  color: #999;
 }
 .transcript-log p {
   font-family: monospace;
@@ -459,6 +459,14 @@ h1 {
 @keyframes pit-urgent-blink {
   0%, 100% { opacity: 1; border-color: #ff4136; }
   50% { opacity: 0.5; border-color: #ff851b; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quali-badge,
+  .pit-window-tile,
+  .pit-window-tile.urgent {
+    animation: none;
+  }
 }
 
 .control-button:hover:not(:disabled) {

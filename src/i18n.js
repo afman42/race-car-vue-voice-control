@@ -24,17 +24,27 @@ const detectInitialLocale = () => {
 };
 
 const locale = ref(detectInitialLocale());
+if (typeof document !== "undefined") {
+  document.documentElement.lang = locale.value;
+}
 
 export function t(key, params) {
   const dict = messages[locale.value] || messages.en;
   const entry = dict[key] ?? messages.en[key];
   if (entry === undefined) return key;
-  return typeof entry === "function" ? entry(params || {}) : entry;
+  const text =
+    typeof entry === "function" ? entry(params || {}) : entry;
+  // Scrub missing interpolation params before they reach the UI.
+  return String(text).replaceAll("undefined", "—");
 }
 
 export function setLocale(next) {
   if (!SUPPORTED_LOCALES[next]) return;
   locale.value = next;
+  // WCAG 3.1.2: keep the document language in sync with the UI locale.
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = next;
+  }
   if (typeof window !== "undefined" && window.localStorage) {
     window.localStorage.setItem(STORAGE_KEY, next);
   }

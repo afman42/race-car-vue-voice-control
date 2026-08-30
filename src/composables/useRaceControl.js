@@ -86,14 +86,12 @@ export function useRaceControl() {
     qualifyingResults,
     qualifyingBestLap,
     qualifyingPosition,
-    qualifyingInfo,
     aiQualifyingBestLap,
     aiQualifyingFinished,
     tireTemp,
     tireTempDisplayStatus,
     drsEligible,
     pitWindowInfo,
-    pitWindowVisible,
     pitWindowUrgent,
     startQualifying,
     getQualifyingStatus,
@@ -266,7 +264,7 @@ export function useRaceControl() {
       message = await commandActions[command]();
     } catch (err) {
       console.warn("Command action failed:", command, err);
-      message = t("msg.notRecognized", { transcript: "" });
+      message = t("msg.commandFailed");
     }
     if (command === "overtake" && overtakeActive.value) {
       startOvertakeCountdown();
@@ -296,17 +294,35 @@ export function useRaceControl() {
       statusMessage.value = t("msg.notRecognized", { transcript });
     }
 
-    setTimeout(() => {
+    scheduleRelisten();
+  };
+
+  // Auto-reopen the radio a beat after a command. Cancellable: an explicit
+  // user stop or unmount inside the window must win over this timer.
+  let relistenTimeout = null;
+  const REOPEN_DELAY_MS = 500;
+
+  const scheduleRelisten = () => {
+    if (relistenTimeout) clearTimeout(relistenTimeout);
+    relistenTimeout = setTimeout(() => {
+      relistenTimeout = null;
+      if (isListening.value) return;
       speechService.resetManualStop();
       toggleListening(true);
-    }, 500);
+    }, REOPEN_DELAY_MS);
+  };
+
+  const cancelRelisten = () => {
+    if (relistenTimeout) {
+      clearTimeout(relistenTimeout);
+      relistenTimeout = null;
+    }
   };
 
   const toggleListening = (forceStart = false) => {
     if (isListening.value && !forceStart) {
+      cancelRelisten();
       speechService.stopListening();
-      isListening.value = false;
-      statusMessage.value = t("ui.radioClosed");
     } else {
       const started = speechService.startListening(processCommand, handleError, {
         lang: speechLang.value,
@@ -325,6 +341,17 @@ export function useRaceControl() {
       typeof error === "string"
         ? error
         : error?.error || error?.message || "unknown";
+
+    // Transient: the service auto-restarts with backoff and the mic stays
+    // live — report quietly, never claim listening stopped. Fatal: the
+    // session is over, close the radio state out.
+    const TRANSIENT_ERRORS = new Set(["no-speech", "network", "aborted"]);
+    if (TRANSIENT_ERRORS.has(errorCode)) {
+      statusMessage.value =
+        errorCode === "network" ? t("err.network") : t("err.noSpeech");
+      return;
+    }
+
     let errorMessage = t("err.unknown");
     switch (errorCode) {
       case "not-allowed":
@@ -337,12 +364,6 @@ export function useRaceControl() {
       case "not-supported":
         errorMessage = t("err.notSupported");
         break;
-      case "no-speech":
-        errorMessage = t("err.noSpeech");
-        break;
-      case "network":
-        errorMessage = t("err.network");
-        break;
     }
     statusMessage.value = errorMessage;
     isListening.value = false;
@@ -350,9 +371,10 @@ export function useRaceControl() {
 
   // --- CLEANUP ---
   onUnmounted(() => {
+    cancelRelisten();
     speechService.stopListening();
-    if (overtakeCountdownInterval) clearInterval(overtakeCountdownInterval);
-    if (gearFlashTimeout) clearTimeout(gearFlashTimeout);
+    clearInterval(overtakeCountdownInterval);
+    clearTimeout(gearFlashTimeout);
   });
 
   // --- DEV HELPERS ---
@@ -411,7 +433,6 @@ export function useRaceControl() {
     // Qualifying
     raceMode,
     qualifyingLapsRemaining,
-    qualifyingInfo,
     aiQualifyingBestLap,
     aiQualifyingFinished,
     // Tire temp, DRS, pit window
@@ -419,7 +440,6 @@ export function useRaceControl() {
     tireTempDisplayStatus: tireTempDisplayStatus,
     drsEligible: drsEligible,
     pitWindowInfo: pitWindowInfo,
-    pitWindowVisible: pitWindowVisible,
     pitWindowUrgent: pitWindowUrgent,
     // i18n
     t,

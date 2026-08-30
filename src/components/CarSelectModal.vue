@@ -1,6 +1,13 @@
 <template>
-  <div v-if="show" class="car-modal-overlay" @click.self="$emit('close')">
-    <div class="car-modal" role="dialog" :aria-label="t('ui.carTitle')">
+  <div v-if="show" class="car-modal-overlay" @click.self="$emit('close')" @keydown="onOverlayKeydown">
+    <div
+      ref="modalPanel"
+      class="car-modal"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      :aria-label="t('ui.carTitle')"
+    >
       <h2>{{ t("ui.carTitle") }}</h2>
       <div class="car-grid">
         <button
@@ -54,21 +61,67 @@
 </template>
 
 <script setup>
+import { ref, watch, nextTick } from "vue";
 import { useI18n } from "@/i18n";
 import { CAR_PRESETS } from "@/config";
 
-defineProps({
+const props = defineProps({
   show: { type: Boolean, default: false },
   selectedId: { type: String, default: "balanced" },
 });
 
-defineEmits(["select", "close"]);
+const emit = defineEmits(["select", "close"]);
 
 const { t } = useI18n();
 const cars = CAR_PRESETS;
 
-// Map a multiplier (0.6–1.3) to a 0–100% bar width.
-const statPercent = (mul) => Math.round(((mul - 0.5) / 0.9) * 100);
+// Map a stat multiplier to a 0-100% bar width. Preset stats span 0.6-1.3;
+// the scale adds headroom (0.5 -> 0%, 1.4 -> 100%) so no stat renders a
+// fully-empty or full-width bar.
+const STAT_MIN = 0.5;
+const STAT_RANGE = 0.9;
+const statPercent = (mul) => Math.round(((mul - STAT_MIN) / STAT_RANGE) * 100);
+
+// --- Focus management (WCAG 2.4.3) ---
+const modalPanel = ref(null);
+let previouslyFocused = null;
+
+watch(
+  () => props.show,
+  async (show) => {
+    if (show) {
+      previouslyFocused = document.activeElement;
+      await nextTick();
+      modalPanel.value?.focus();
+      return;
+    }
+    previouslyFocused?.focus?.();
+    previouslyFocused = null;
+  },
+);
+
+// Escape closes the dialog; Tab cycles focus within it.
+const onOverlayKeydown = (event) => {
+  if (event.key === "Escape") {
+    emit("close");
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const panel = modalPanel.value;
+  const buttons = panel?.querySelectorAll("button");
+  if (!buttons || buttons.length === 0) return;
+  const first = buttons[0];
+  const last = buttons[buttons.length - 1];
+  const { activeElement } = document;
+  const focusOutside = !panel.contains(activeElement);
+  if (event.shiftKey && (focusOutside || activeElement === first || activeElement === panel)) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (focusOutside || activeElement === last)) {
+    event.preventDefault();
+    first.focus();
+  }
+};
 </script>
 
 <style scoped>
