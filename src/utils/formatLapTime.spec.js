@@ -23,4 +23,15 @@ describe("formatLapTime", () => {
   it("rounds millisecond fractions", () => {
     expect(formatLapTime(1234.6)).toBe("0:01.235");
   });
+
+  it("returns a placeholder for non-finite values", () => {
+    expect(formatLapTime(NaN)).toBe("--:--");
+    expect(formatLapTime(Infinity)).toBe("--:--");
+    expect(formatLapTime(-Infinity)).toBe("--:--");
+  });
+
+  it("never renders a 4-digit millisecond field", () => {
+    // 999.5ms rounds up to a whole second, not ".1000".
+    expect(formatLapTime(59999.6)).toBe("1:00.000");
+  });
 });
