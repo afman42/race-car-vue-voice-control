@@ -32,6 +32,9 @@ scratch*
 test-results/
 playwright-report/
 
+# Coverage output
+coverage/
+
 # Environment files
 .env
 .env.*
