@@ -10,7 +10,7 @@ src/
 ├── App.vue                      # Root component (global font & dark theme)
 │
 ├── components/                  # Vue Single-File Components
-│   ├── RaceControl.vue          # Main dashboard UI (~417 lines)
+│   ├── RaceControl.vue          # Main dashboard UI (~415 lines)
 │   ├── RaceControl.css          # Dashboard styles (extracted for readability)
 │   ├── TrackMap.vue             # SVG track map with player/rival markers
 │   ├── RpmGauge.vue             # RPM gauge with needle animation
@@ -24,7 +24,7 @@ src/
 ├── composables/                 # Vue 3 reactive logic
 │   ├── useCarState.js           # Singleton state refs + helpers (source of truth)
 │   ├── useCarSimulation.js      # Core simulation tick (physics engine)
-│   ├── useCar.js                # Slim orchestrator (683 lines)
+│   ├── useCar.js                # Slim orchestrator (593 lines)
 │   ├── useRaceControl.js        # UI orchestration, speech, command routing
 │   ├── useAiRival.js            # AI rival lap-time generator
 │   ├── useQualifying.js         # Qualifying mode logic (extracted)
@@ -44,6 +44,9 @@ src/
     ├── speechRecognitionService.js  # Web Speech API recognition
     └── textToSpeechService.js       # Web Speech API synthesis
 ```
+
+Each source file has a colocated `*.spec.js`. See [`TESTING.md`](TESTING.md) for
+the file map and the patterns used to test module-scoped state and browser APIs.
 
 ---
 
@@ -150,26 +153,38 @@ After each successful command, speech recognition auto-restarts after **500ms**.
 ## Services Layer
 
 ### `audioService.js`
-- Pre-loads `Audio` elements at startup
-- `playSound(name)` silently resolves for failed loads
-- Graceful fallback when Audio API is unavailable
+- Pre-loads `Audio` elements at startup; idempotent, and names sharing a file
+  path (`drsOn`/`drsOff` → `beep.mp3`) share one element
+- `playSound(name)` always resolves — on `ended`, on a media `error`, or on a
+  rejected `play()` (autoplay policy). Never rejects, never hangs
+- No-ops when the Audio API is unavailable
 
 ### `engineAudioService.js`
-- Synthesizes continuous engine pitch via `OscillatorNode` + gain
-- `start(rpm)` / `setRpm(rpm)` / `stop()` for smooth transitions
-- Upshift blips (sine 1200→600 Hz) and downshift grumbles (sawtooth + white noise)
+- Synthesizes continuous engine pitch via four `OscillatorNode` harmonics
+  (1×, 2×, 3×, 0.5×) through a master gain
+- `start(rpm)` / `setRpm(rpm)` / `stop()` / `close()`; rpm maps to 35–160 Hz and
+  is clamped at both ends
+- `stop()` fades over 300ms and defers `disconnect()` by 400ms so the ramp is
+  audible; `start()` after a `stop()` reuses the same `AudioContext`
+- A failed start tears down partial nodes so a retry begins clean
+- Upshift blips (sine 1200→600 Hz) and downshift grumbles (sawtooth + white
+  noise burst + two pop overtones)
 
 ### `speechRecognitionService.js`
-- Wraps `webkitSpeechRecognition` / `SpeechRecognition`
-- Dynamic language switching via `setLanguage()`
-- Auto-restart unless manually stopped or fatal error occurred
-- Handles: mic denied, not supported, no speech, network errors
+- Wraps `SpeechRecognition` / `webkitSpeechRecognition`, reusing one instance
+- Dynamic language switching via `setLanguage()` or per-session `options.lang`
+- Picks the highest-confidence final result above a 0.5 threshold, falling back
+  to the last final result when nothing clears it
+- Auto-restarts on `onend` with exponential backoff (100ms → 1000ms cap);
+  suppressed by a manual stop or a fatal error
+- Fatal: `not-allowed`, `service-not-allowed`, `audio-capture`
 
 ### `textToSpeechService.js`
 - Wraps `window.speechSynthesis`
 - Caches voice list, refreshes on `voiceschanged` event
-- Picks voice matching current language (prefers exact BCP-47 match)
-- Cancels in-progress speech before new utterances
+- Voice precedence: exact BCP-47 match → same language, any region → first voice
+- Cancels in-progress speech, then defers one tick before speaking (Chrome drops
+  an utterance queued immediately after `cancel()`)
 - Rate set to 1.1× for natural pacing
 - **Never rejects** — errors log as warnings and resolve silently
 

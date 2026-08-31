@@ -32,7 +32,8 @@
 ```bash
 pnpm install
 pnpm dev              # Start dev server (https://localhost:5173)
-pnpm test:run         # Run 236 unit tests (Vitest)
+pnpm test:run         # Run 766 unit tests (Vitest)
+pnpm test:coverage    # Unit tests + coverage report (80% gate)
 pnpm test:e2e         # Run 67 end-to-end tests (Playwright)
 ```
 
@@ -76,7 +77,7 @@ src/
 ├── App.vue                  # Root component (global font & dark theme)
 │
 ├── components/              # Vue SFCs (template + script + styles)
-│   ├── RaceControl.vue      # Main dashboard UI (417 lines)
+│   ├── RaceControl.vue      # Main dashboard UI (415 lines)
 │   ├── RaceControl.css      # Dashboard styles (extracted for maintainability)
 │   ├── TrackMap.vue         # SVG track map with player/rival markers
 │   ├── RpmGauge.vue         # RPM gauge with needle + shift lights
@@ -87,7 +88,7 @@ src/
 ├── composables/             # Vue 3 composables (reactive logic)
 │   ├── useCarState.js       # Singleton state refs + helpers
 │   ├── useCarSimulation.js  # Simulation tick (physics engine)
-│   ├── useCar.js            # Slim orchestrator (683 lines)
+│   ├── useCar.js            # Slim orchestrator (593 lines)
 │   ├── useRaceControl.js    # UI orchestration, command routing, speech
 │   ├── useAiRival.js        # AI rival lap-time generator
 │   ├── useQualifying.js     # Qualifying mode logic (extracted)
@@ -111,6 +112,9 @@ src/
     └── textToSpeechService.js       # Speech synthesis wrapper
 ```
 
+Unit tests are colocated with their subject as `*.spec.js` (e.g. `useCar.js` →
+`useCar.spec.js`). E2E specs live in `e2e/`.
+
 ---
 
 ## 📖 Documentation
@@ -129,8 +133,12 @@ src/
 
 | Suite | Tests | Runner |
 |---|---|---|
-| **Unit tests** | 249 across 12 files | Vitest + jsdom |
+| **Unit tests** | 766 across 26 files | Vitest + jsdom |
 | **E2E tests** | 67 across 2 files | Playwright (Chromium) |
+
+Coverage is gated at **80%** for statements, branches, functions, and lines
+(`vitest.config.js` → `test.coverage.thresholds`). Current: **97% statements,
+92% branches**. See [`docs/TESTING.md`](docs/TESTING.md) for the per-file map.
 
 ---
 
@@ -141,6 +149,7 @@ src/
 | **Framework** | Vue 3 (Composition API + `<script setup>`) |
 | **Build** | Vite 7 with Vue plugin + basic SSL |
 | **Testing (unit)** | Vitest + jsdom + @vue/test-utils |
+| **Coverage** | `@vitest/coverage-v8` (80% threshold gate) |
 | **Testing (e2e)** | Playwright |
 | **Speech** | Web Speech API (recognition + synthesis) |
 | **Package Manager** | pnpm |

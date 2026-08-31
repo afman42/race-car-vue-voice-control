@@ -39,8 +39,11 @@ Open **https://localhost:5173** in Chrome. Your browser will show a security war
 | `pnpm build` | Production build to `dist/` |
 | `pnpm preview` | Preview the production build locally |
 | `pnpm test` | Run unit tests in watch mode |
-| `pnpm test:run` | Run all unit tests once (236 tests) |
+| `pnpm test:run` | Run all unit tests once (766 tests) |
+| `pnpm test:coverage` | Unit tests + coverage report; fails under the 80% threshold |
 | `pnpm test:e2e` | Run Playwright e2e tests (67 tests, auto-starts dev server) |
+| `pnpm lint` | ESLint over `src/` |
+| `pnpm format` | Prettier over `src/` |
 
 ---
 
@@ -76,7 +79,7 @@ Open **https://localhost:5173** in Chrome. Your browser will show a security war
 |---|---|---|
 | `vue` | ^3.5 | UI framework (Composition API, `<script setup>`) |
 
-### Dev (7 packages)
+### Dev (11 packages)
 
 | Package | Purpose |
 |---|---|
@@ -84,6 +87,14 @@ Open **https://localhost:5173** in Chrome. Your browser will show a security war
 | `@vitejs/plugin-vue` | Vue SFC compiler for Vite |
 | `@vitejs/plugin-basic-ssl` | Auto-generated HTTPS cert for local dev |
 | `vitest` | Unit test runner (Vite-native) |
+| `@vitest/coverage-v8` | Coverage provider (v8), enforces the 80% thresholds |
 | `@vue/test-utils` | Vue component testing utilities |
 | `jsdom` | DOM environment for unit tests |
 | `@playwright/test` | E2E test runner (Chromium) |
+| `eslint` | Linter |
+| `eslint-plugin-vue` | Vue-specific lint rules |
+| `prettier` | Formatter |
+
+> **Known issue:** `pnpm lint` currently fails — `eslint.config.js` imports
+> `@eslint/js`, which is not listed in `package.json`. Install it (or drop the
+> import) before relying on the lint script.
