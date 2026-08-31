@@ -418,6 +418,8 @@ export function useRaceControl() {
     // Qualifying
     raceMode,
     qualifyingLapsRemaining,
+    qualifyingBestLap,
+    qualifyingPosition,
     aiQualifyingBestLap,
     aiQualifyingFinished,
     // Tire temp, DRS, pit window
