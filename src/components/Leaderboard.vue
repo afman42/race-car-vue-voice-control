@@ -1,19 +1,19 @@
 <template>
   <div
-    v-if="entries.length"
     class="leaderboard"
     :class="{ 'ai-board': aiBoard }"
     role="region"
     :aria-label="title"
   >
     <h3>{{ title }}</h3>
-    <ol>
+    <ol v-if="entries.length">
       <li v-for="(entry, index) in entries" :key="`${entry.lap}-${entry.time}`">
         <span class="lb-rank">{{ index + 1 }}</span>
         <span class="lb-lap">{{ t("ui.lapShort", { lap: entry.lap }) }}</span>
         <span class="lb-time">{{ formatLapTime(entry.time) }}</span>
       </li>
     </ol>
+    <p v-else role="status" class="lb-empty">{{ t("ui.noLapsYet") }}</p>
   </div>
 </template>
 
@@ -37,7 +37,7 @@ const { t } = useI18n();
   border-top: 1px solid #444;
 }
 .leaderboard h3 {
-  color: #aaa;
+  color: #c9c9c9;
   font-size: 0.9rem;
   text-transform: uppercase;
   text-align: center;
@@ -74,6 +74,12 @@ const { t } = useI18n();
 .lb-time {
   color: #ffdc00;
   font-family: monospace;
+}
+.lb-empty {
+  text-align: center;
+  color: #c9c9c9;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.6rem;
 }
 .ai-board li:first-child {
   border-color: #ff851b;

@@ -32,6 +32,7 @@ export default {
   "ui.lastLap": "Last Lap",
   "ui.bestLap": "Best Lap",
   "ui.leaderboard": "Fastest Laps",
+  "ui.noLapsYet": "No laps recorded yet.",
   "ui.lapShort": ({ lap }) => `L${lap}`,
   "ui.aiRival": "AI Rival",
   "ui.aiBoard": "Rival Laps",

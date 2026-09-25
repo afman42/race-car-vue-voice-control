@@ -182,15 +182,17 @@ describe("RaceControl.vue", () => {
       expect(text).toContain("--:--"); // no lap time yet
     });
 
-    it("hides the leaderboard until a lap is posted", async () => {
+    it("shows an empty leaderboard state until a lap is posted", async () => {
       const wrapper = mount(RaceControl);
-      expect(wrapper.find(".leaderboard").exists()).toBe(false);
+      expect(wrapper.find(".leaderboard").exists()).toBe(true);
+      expect(wrapper.find(".lb-empty").exists()).toBe(true);
 
       const { leaderboard } = useCar();
       leaderboard.value = [{ lap: 1, time: 12345 }];
       await flush();
 
       expect(wrapper.find(".leaderboard").exists()).toBe(true);
+      expect(wrapper.find(".lb-empty").exists()).toBe(false);
     });
   });
 

@@ -32,6 +32,7 @@ export default {
   "ui.weather": "Cuaca",
   "ui.damage": "Kerusakan",
   "ui.leaderboard": "Papan Peringkat",
+  "ui.noLapsYet": "Belum ada lap tercatat.",
   "ui.lapShort": ({ lap }) => `Lap ${lap}`,
   "ui.aiRival": "Lawan AI",
   "ui.aiBoard": "Lap AI",
