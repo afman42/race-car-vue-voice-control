@@ -38,3 +38,4 @@ coverage/
 # Environment files
 .env
 .env.*
+graphify-out/
