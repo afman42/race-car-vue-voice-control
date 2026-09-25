@@ -102,12 +102,9 @@
     <RpmGauge :rpm="rpm" />
 
     <div class="dashboard">
-      <div class="display-item">
-        <h2>{{ t("ui.engine") }}</h2>
-        <p :class="['status', engineStatus ? 'on' : 'off']">
-          {{ engineStatus ? t("ui.on") : t("ui.off") }}
-        </p>
-      </div>
+      <StatusTile :title="t('ui.engine')" :status-class="engineStatus ? 'on' : 'off'">
+        {{ engineStatus ? t("ui.on") : t("ui.off") }}
+      </StatusTile>
       <div class="display-item gear-display">
         <h2>{{ t("ui.gear") }}</h2>
         <div class="gear-indicator" :class="{ shifting: gearFlash }">
@@ -115,7 +112,7 @@
             {{ currentGear > 0 ? currentGear : 'N' }}
           </span>
         </div>
-        <div class="shift-lights">
+        <div class="shift-lights" aria-hidden="true">
           <span
             v-for="i in 5"
             :key="i"
@@ -140,25 +137,19 @@
           {{ currentSegmentLabel }}
         </p>
       </div>
-      <div class="display-item">
-        <h2>{{ t("ui.drs") }}</h2>
-        <p :class="['status', drsStatus ? 'on' : 'off']">
-          {{ drsStatus ? t("ui.enabled") : t("ui.disabled") }}
-        </p>
-        <p
+      <StatusTile :title="t('ui.drs')" :status-class="drsStatus ? 'on' : 'off'">
+        {{ drsStatus ? t("ui.enabled") : t("ui.disabled") }}
+        <span
           v-if="aiEnabled && !drsStatus"
           class="drs-zone-indicator"
           :class="drsEligible ? 'eligible' : 'ineligible'"
         >
-          {{ drsEligible ? t('ui.drsEligible') : t('ui.drsNotEligible') }}
-        </p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.overtake") }}</h2>
-        <p :class="['status', overtakeActive ? 'on' : 'off']">
-          {{ overtakeActive ? t("ui.active") : t("ui.ready") }}
-        </p>
-        <div
+          {{ drsEligible ? t("ui.drsEligible") : t("ui.drsNotEligible") }}
+        </span>
+      </StatusTile>
+      <StatusTile :title="t('ui.overtake')" :status-class="overtakeActive ? 'on' : 'off'">
+        {{ overtakeActive ? t("ui.active") : t("ui.ready") }}
+        <span
           v-if="overtakeActive"
           class="countdown-bar"
           role="progressbar"
@@ -167,145 +158,93 @@
           :aria-valuemax="100"
           :aria-label="t('ui.overtake')"
         >
-          <div
+          <span
             class="countdown-fill"
+            aria-hidden="true"
             :style="{ width: `${overtakeRemaining}%` }"
-          ></div>
-        </div>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.tires") }}</h2>
-        <p class="status info">
-          {{ tireCompound }} - {{ tireStatus }} ({{ tireLife.toFixed(0) }}%)
-        </p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.fuelLevel") }}</h2>
-        <p :class="['status', isLowFuel ? 'off' : 'info']">
-          {{ fuelLevel.toFixed(1) }}%
-        </p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.battery") }}</h2>
-        <p :class="['status', !isLowBattery ? 'on' : 'off']">
-          {{ batteryLevel.toFixed(1) }}%
-        </p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.fuelMix") }}</h2>
-        <p class="status info">{{ fuelMix }}</p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.ersMode") }}</h2>
-        <p class="status info">{{ ersMode }}</p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.speed") }}</h2>
-        <p class="status on">{{ speedKmh }} <span class="unit-label">km/h</span></p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.currentLapTime") }}</h2>
-        <p class="status info lap-time">{{ formatLapTime(currentLapTime) }}</p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.engineTemp") }}</h2>
-        <p
-          :class="[
-            'status',
-            tempStatus === 'Critical'
-              ? 'off'
-              : tempStatus === 'Hot'
-                ? 'info'
-                : 'on',
-          ]"
-        >
-          {{ engineTemp.toFixed(0) }}&deg;C
-        </p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.weather") }}</h2>
-        <p class="status info">{{ weather }}</p>
-      </div>
-      <!-- Tire Temperature tile -->
-      <div class="display-item">
-        <h2>{{ t("ui.tireTemp") }}</h2>
-        <p
-          :class="[
-            'status',
-            tireTempDisplayStatus === 'Overheated' || tireTempDisplayStatus === 'Hot'
-              ? 'off'
-              : tireTempDisplayStatus === 'Cold'
-                ? 'info'
-                : 'on',
-          ]"
-        >
-          {{ tireTemp.toFixed(0) }}&deg;C
-        </p>
-      </div>
-      <!-- Pit Window tile -->
-      <div
+          ></span>
+        </span>
+      </StatusTile>
+      <StatusTile :title="t('ui.tires')">
+        {{ tireCompound }} - {{ tireStatus }} ({{ tireLife.toFixed(0) }}%)
+      </StatusTile>
+      <StatusTile :title="t('ui.fuelLevel')" :status-class="isLowFuel ? 'off' : 'info'">
+        {{ fuelLevel.toFixed(1) }}%
+      </StatusTile>
+      <StatusTile :title="t('ui.battery')" :status-class="!isLowBattery ? 'on' : 'off'">
+        {{ batteryLevel.toFixed(1) }}%
+      </StatusTile>
+      <StatusTile :title="t('ui.fuelMix')">
+        {{ fuelMix }}
+      </StatusTile>
+      <StatusTile :title="t('ui.ersMode')">
+        {{ ersMode }}
+      </StatusTile>
+      <StatusTile :title="t('ui.speed')" status-class="on">
+        {{ speedKmh }} <span class="unit-label">km/h</span>
+      </StatusTile>
+      <StatusTile :title="t('ui.currentLapTime')">
+        <span class="lap-time">{{ formatLapTime(currentLapTime) }}</span>
+      </StatusTile>
+      <StatusTile :title="t('ui.engineTemp')" :status-class="severityClass(tempStatus)">
+        {{ engineTemp.toFixed(0) }}&deg;C
+      </StatusTile>
+      <StatusTile :title="t('ui.weather')">
+        {{ weather }}
+      </StatusTile>
+      <StatusTile :title="t('ui.tireTemp')" :status-class="severityClass(tireTempDisplayStatus)">
+        {{ tireTemp.toFixed(0) }}&deg;C
+      </StatusTile>
+      <StatusTile
         v-if="pitWindowInfo"
-        class="display-item pit-window-tile"
-        :class="{ urgent: pitWindowUrgent }"
+        :title="t('ui.pitWindow')"
+        :status-class="pitWindowUrgent ? 'off' : 'info'"
+        :class="['pit-window-tile', { urgent: pitWindowUrgent }]"
       >
-        <h2>{{ t("ui.pitWindow") }}</h2>
-        <p :class="['status', pitWindowUrgent ? 'off' : 'info']">
-          <template v-if="pitWindowUrgent">
-            {{ t("ui.boxNow") }}
-          </template>
-          <template v-else>
-            {{ t("ui.pitLap", { lap: pitWindowInfo.startLap }) }}
-          </template>
-        </p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.damage") }}</h2>
-        <p
-          :class="[
-            'status',
-            damageStatus === 'Critical' || damageStatus === 'Major'
-              ? 'off'
-              : damageStatus === 'Minor'
-                ? 'info'
-                : 'on',
-          ]"
-        >
-          {{ carDamage.toFixed(0) }}%
-        </p>
-      </div>
-      <div class="display-item car-tile" :style="{ borderColor: selectedCar.markerColor }">
-        <h2>{{ t("ui.selectCar") }}</h2>
-        <p class="status info">{{ selectedCar.label }}</p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.lastLap") }}</h2>
-        <p class="status info">{{ formatLapTime(lastLapTime) }}</p>
-      </div>
-      <div class="display-item">
-        <h2>{{ t("ui.bestLap") }}</h2>
-        <p class="status info">{{ formatLapTime(bestLapTime) }}</p>
-      </div>
-      <!-- Qualifying best lap tile -->
-      <div v-if="raceMode === 'qualifying'" class="display-item quali-tile">
-        <h2>{{ t("ui.qualiBestLap") }}</h2>
-        <p class="status info">
-          {{ formatLapTime(qualifyingBestLap) }}
-        </p>
-      </div>
-
-      <div class="display-item" :class="{ 'ai-active': aiEnabled }">
-        <h2>{{ t("ui.aiRival") }}</h2>
-        <p :class="['status', aiEnabled ? 'on' : 'off']">
-          <template v-if="aiEnabled">
-            {{ aiDifficulty }}
-            <span class="ai-sub">
-              {{ t("ui.lapShort", { lap: aiCurrentLap }) }} ·
-              {{ formatLapTime(aiBestLapTime) }}
-            </span>
-          </template>
-          <template v-else>{{ t("ui.aiOff") }}</template>
-        </p>
-      </div>
+        <template v-if="pitWindowUrgent">
+          {{ t("ui.boxNow") }}
+        </template>
+        <template v-else>
+          {{ t("ui.pitLap", { lap: pitWindowInfo.startLap }) }}
+        </template>
+      </StatusTile>
+      <StatusTile :title="t('ui.damage')" :status-class="severityClass(damageStatus)">
+        {{ carDamage.toFixed(0) }}%
+      </StatusTile>
+      <StatusTile
+        :title="t('ui.selectCar')"
+        class="car-tile"
+        :style="{ borderColor: selectedCar.markerColor }"
+      >
+        {{ selectedCar.label }}
+      </StatusTile>
+      <StatusTile :title="t('ui.lastLap')">
+        {{ formatLapTime(lastLapTime) }}
+      </StatusTile>
+      <StatusTile :title="t('ui.bestLap')">
+        {{ formatLapTime(bestLapTime) }}
+      </StatusTile>
+      <StatusTile
+        v-if="raceMode === 'qualifying'"
+        :title="t('ui.qualiBestLap')"
+        class="quali-tile"
+      >
+        {{ formatLapTime(qualifyingBestLap) }}
+      </StatusTile>
+      <StatusTile
+        :title="t('ui.aiRival')"
+        :status-class="aiEnabled ? 'on' : 'off'"
+        :class="{ 'ai-active': aiEnabled }"
+      >
+        <template v-if="aiEnabled">
+          {{ aiDifficulty }}
+          <span class="ai-sub">
+            {{ t("ui.lapShort", { lap: aiCurrentLap }) }} ·
+            {{ formatLapTime(aiBestLapTime) }}
+          </span>
+        </template>
+        <template v-else>{{ t("ui.aiOff") }}</template>
+      </StatusTile>
     </div>
 
     <Leaderboard
@@ -339,7 +278,15 @@ import RpmGauge from "./RpmGauge.vue";
 import Leaderboard from "./Leaderboard.vue";
 import ManualControls from "./ManualControls.vue";
 import CarSelectModal from "./CarSelectModal.vue";
+import StatusTile from "./StatusTile.vue";
 
+const WARN_STATUSES = new Set(["Hot", "Minor", "Cold"]);
+const CRITICAL_STATUSES = new Set(["Critical", "Major", "Overheated"]);
+function severityClass(status) {
+  if (CRITICAL_STATUSES.has(status)) return "off";
+  if (WARN_STATUSES.has(status)) return "info";
+  return "on";
+}
 const {
   engineStatus,
   rpm,
