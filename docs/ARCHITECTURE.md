@@ -36,13 +36,15 @@ src/
 │
 ├── utils/
 │   ├── formatLapTime.js         # Lap time formatter
-│   └── raceStanding.js          # Progress, standings, position formatting
+│   ├── raceStanding.js          # Progress, standings, position formatting
+│   └── numeric.js               # clampRound, roundTemp, insertTopN, thresholdLabel
 │
 └── services/                    # Browser API wrappers
     ├── audioService.js              # Sound effect playback
     ├── engineAudioService.js        # Synthesized engine pitch (Web Audio API)
     ├── speechRecognitionService.js  # Web Speech API recognition
-    └── textToSpeechService.js       # Web Speech API synthesis
+    ├── textToSpeechService.js       # Web Speech API synthesis
+    └── voiceAction.js               # Shared speak-and-return helpers (voiceSay*)
 ```
 
 Each source file has a colocated `*.spec.js`. See [`TESTING.md`](TESTING.md) for
@@ -85,9 +87,9 @@ The AI rival (`useAiRival.js`) is **not** a full physics simulation — it has n
 
 `commandRouter.js` resolves voice transcripts to command keys using two passes:
 
-1. **Pass 1 — Word-boundary match** (fast, precise): checks if any keyword appears at a word boundary in the transcript. Prevents "collapse" matching "lap" while allowing "raining" to match "rain". Short keywords (< 4 chars) require exact matches to prevent false positives.
+1. **Pass 1 — Word-boundary match** (fast, precise): checks precompiled regexes (built once at import) for any keyword at a word boundary in the transcript. Prevents "collapse" matching "lap" while allowing "raining" to match "rain". Short keywords (< 8 chars) require exact matches to prevent false positives.
 
-2. **Pass 2 — Fuzzy match** (tolerant): splits transcript into tokens, then checks each keyword phrase using per-word **Levenshtein edit distance**. Tolerates slips like "start engin" → "startEngine".
+2. **Pass 2 — Fuzzy match** (tolerant): splits transcript into tokens, then checks each keyword phrase using per-word **Levenshtein edit distance** with reused row buffers. Tolerates slips like "start engin" → "startEngine".
 
 **Keyword ordering matters** — matchers are ordered in `commands/matchers.js` with specific multi-word commands before broad single-word ones (e.g. "tire temperature" before "temperature", "qualifying status" before "qualifying").
 
@@ -101,6 +103,8 @@ The project follows a pattern of extracting focused composables from the main or
 | `useCarSimulation.js` | `useCar.js` | Physics tick, auto-shift, stall/overheat |
 | `useRaceControl.js` | `RaceControl.vue` | UI logic, speech, command routing |
 | `useQualifying.js` | `useCar.js` | Qualifying mode (P1/P2 shootout) |
+| `voiceAction.js` | `useCar/useQualifying/useAiRival` | voiceSay / voiceSaySync / voiceSayWithSound |
+| `utils/numeric.js` | sim + AI boards | clampRound / roundTemp / insertTopN / thresholdLabel |
 
 This keeps each file focused and testable.
 
@@ -167,8 +171,10 @@ After each successful command, speech recognition auto-restarts after **500ms**.
 - `stop()` fades over 300ms and defers `disconnect()` by 400ms so the ramp is
   audible; `start()` after a `stop()` reuses the same `AudioContext`
 - A failed start tears down partial nodes so a retry begins clean
-- Upshift blips (sine 1200→600 Hz) and downshift grumbles (sawtooth + white
-  noise burst + two pop overtones)
+- Upshift blips (sine 1200→600 Hz) and downshift grumbles (sawtooth + shared
+  precomputed white-noise buffer + two pop overtones)
+- Track boundary markers are resolved once on mount and cached
+  (`cachedSegMarkers`); per-tick updates only move player/rival markers
 
 ### `speechRecognitionService.js`
 - Wraps `SpeechRecognition` / `webkitSpeechRecognition`, reusing one instance
@@ -187,6 +193,13 @@ After each successful command, speech recognition auto-restarts after **500ms**.
   an utterance queued immediately after `cancel()`)
 - Rate set to 1.1× for natural pacing
 - **Never rejects** — errors log as warnings and resolve silently
+
+### `voiceAction.js`
+- `voiceSay(key, params)` — localize, await TTS, return text (command actions)
+- `voiceSaySync(key, params)` — localize, fire-and-forget TTS, return text (sim tick)
+- `voiceSayRaw(text)` — speak pre-localized text (legacy path)
+- `voiceSayWithSound(sound, key, params)` — play a sound effect, then TTS
+  (engine/DRS/overtake actions)
 
 ---
 
