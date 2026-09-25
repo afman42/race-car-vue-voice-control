@@ -90,6 +90,26 @@ const playShiftUp = () => {
 // longer duration and a bit of grumble (sawtooth), simulating a rev-matched
 // downshift blip. Augmented with a backfire crackle: a noise burst with two
 // popping overtones that mimic unburnt fuel igniting in the exhaust.
+let sharedNoiseBuffer = null;
+let sharedNoiseSampleRate = 0;
+const getSharedNoise = () => {
+  if (!audioCtx) return null;
+  if (sharedNoiseBuffer && sharedNoiseSampleRate === audioCtx.sampleRate) {
+    return sharedNoiseBuffer;
+  }
+  const sampleRate = audioCtx.sampleRate;
+  const burstLength = Math.floor(sampleRate * 0.12); // 120ms of noise
+  const noiseBuffer = audioCtx.createBuffer(1, burstLength, sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < burstLength; i++) {
+    // Exponential decay envelope: loud pop then rapid fade
+    const env = Math.exp(-i / (sampleRate * 0.025));
+    noiseData[i] = (Math.random() * 2 - 1) * env;
+  }
+  sharedNoiseBuffer = noiseBuffer;
+  sharedNoiseSampleRate = sampleRate;
+  return noiseBuffer;
+};
 const playShiftDown = () => {
   if (!audioCtx || !isActive) return;
   try {
@@ -109,25 +129,19 @@ const playShiftDown = () => {
     osc.start(now);
     osc.stop(now + 0.18);
 
-    // --- Backfire crackle: brief white-noise burst ---
-    const sampleRate = audioCtx.sampleRate;
-    const burstLength = Math.floor(sampleRate * 0.12); // 120ms of noise
-    const noiseBuffer = audioCtx.createBuffer(1, burstLength, sampleRate);
-    const noiseData = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < burstLength; i++) {
-      // Exponential decay envelope: loud pop then rapid fade
-      const env = Math.exp(-i / (sampleRate * 0.025));
-      noiseData[i] = (Math.random() * 2 - 1) * env;
+    // --- Backfire crackle: brief white-noise burst (shared buffer) ---
+    const noiseBuffer = getSharedNoise();
+    if (noiseBuffer) {
+      const noiseSource = audioCtx.createBufferSource();
+      noiseSource.buffer = noiseBuffer;
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.setValueAtTime(0.18, now + 0.02);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      noiseSource.connect(noiseGain);
+      noiseGain.connect(audioCtx.destination);
+      noiseSource.start(now + 0.02);
+      noiseSource.stop(now + 0.15);
     }
-    const noiseSource = audioCtx.createBufferSource();
-    noiseSource.buffer = noiseBuffer;
-    const noiseGain = audioCtx.createGain();
-    noiseGain.gain.setValueAtTime(0.18, now + 0.02);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-    noiseSource.connect(noiseGain);
-    noiseGain.connect(audioCtx.destination);
-    noiseSource.start(now + 0.02);
-    noiseSource.stop(now + 0.15);
 
     // --- Pop overtones: two short sine bursts for the "crackle" ---
     for (let p = 0; p < 2; p++) {

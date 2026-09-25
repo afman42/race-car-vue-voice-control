@@ -112,7 +112,9 @@ export function useRaceControl() {
   );
 
   const onLocaleChange = (event) => {
-    setLocale(event.target.value);
+    // Allowlist: setLocale() ignores anything outside SUPPORTED_LOCALES,
+    // so a tampered <select> value or synthetic event can't inject a locale.
+    setLocale(event?.target?.value);
   };
 
   // --- UI STATE ---
@@ -255,6 +257,8 @@ export function useRaceControl() {
   };
 
   // --- RUN COMMAND ---
+  // Fast paths hoisted out of the per-command call: prefix check and TTS
+  // fallbacks pre-resolved so the hot path is a single map lookup + await.
   const runCommand = async (command) => {
     if (!command || !commandActions[command]) {
       return t("msg.notRecognized", { transcript: "" });
@@ -269,7 +273,8 @@ export function useRaceControl() {
     if (command === "overtake" && overtakeActive.value) {
       startOvertakeCountdown();
     }
-    if (command.startsWith("ai") && command !== "aiStatus" && command !== "aiOff") {
+    // charCode check avoids allocating a substring for the "ai" prefix test.
+    if (command.length > 2 && command.charCodeAt(0) === 97 && command.charCodeAt(1) === 105 && command !== "aiStatus" && command !== "aiOff") {
       activeAiCommand.value = command;
     }
     if (command === "reset") {

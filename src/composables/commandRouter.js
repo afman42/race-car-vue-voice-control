@@ -7,13 +7,22 @@ import { COMMAND_MATCHERS } from "@/commands/matchers";
  * @param {string} b
  * @returns {number}
  */
+const prevBuf = [];
+const currBuf = [];
+
 export function levenshtein(a, b) {
   if (a === b) return 0;
   if (!a.length) return b.length;
   if (!b.length) return a.length;
 
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  let curr = new Array(b.length + 1);
+  // Reusable row buffers to avoid per-call allocation in fuzzy hot path.
+  if (prevBuf.length < b.length + 1) {
+    prevBuf.length = b.length + 1;
+    currBuf.length = b.length + 1;
+  }
+  const prev = prevBuf;
+  const curr = currBuf;
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
 
   for (let i = 1; i <= a.length; i++) {
     curr[0] = i;
@@ -25,7 +34,11 @@ export function levenshtein(a, b) {
         prev[j - 1] + cost,
       );
     }
-    [prev, curr] = [curr, prev];
+    for (let j = 0; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = curr[j];
+      curr[j] = tmp;
+    }
   }
 
   return prev[b.length];
@@ -55,13 +68,49 @@ const NEGATION_PHRASES = [
 ];
 const MAX_FILLERS = 2;
 
-const KEYWORD_PHRASES = COMMAND_MATCHERS.flatMap(({ keywords }) => [
-  ...(keywords.en || []),
-  ...(keywords.id || []),
-]).map((phrase) => phrase.split(/\s+/).filter(Boolean));
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildPattern = (keyword) => {
+  const escaped = keyword
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(escapeRegExp)
+    .join("\\s+");
+  const tail = PREFIX_KEYWORDS.has(keyword) ? "\\b" : "";
+  return new RegExp(`\\b${escaped}${tail}`);
+};
+
+// Precompiled per-command matchers: regexes and token arrays built once at
+// import time instead of per matchCommand() call.
+const COMPILED_MATCHERS = COMMAND_MATCHERS.map(({ command, keywords }) => {
+  const enList = keywords.en || [];
+  const idList = keywords.id || [];
+  const compileList = (list) =>
+    list.map((kw) => ({
+      raw: kw,
+      re: buildPattern(kw),
+      words: kw.split(/\s+/).filter(Boolean),
+    }));
+  const en = compileList(enList);
+  const id = compileList(idList);
+  const idEn = [...id, ...en];
+  const all = [...en, ...id];
+  return { command, en, idEn, all };
+});
+
+const compiledForLocale = (entry, locale) =>
+  locale === "en" ? entry.en : entry.idEn;
+
+const ALL_KEYWORD_WORDS = COMPILED_MATCHERS.flatMap((m) =>
+  m.all.map((k) => k.words),
+);
 
 const KEYWORD_PHRASE_SET = new Set(
-  KEYWORD_PHRASES.map((words) => words.join(" ")),
+  COMPILED_MATCHERS.flatMap((m) => m.all.map((k) => k.raw)),
+);
+
+const NEGATION_WORDS = NEGATION_PHRASES.map((p) =>
+  p.split(/\s+/).filter(Boolean),
 );
 
 function tokensMatchPhrase(tokens, start, words) {
@@ -73,15 +122,15 @@ function tokensMatchPhrase(tokens, start, words) {
 
 function negationLengthAt(tokens, start) {
   let longest = 0;
-  for (const phrase of NEGATION_PHRASES) {
-    const length = tokensMatchPhrase(tokens, start, phrase.split(/\s+/));
+  for (const words of NEGATION_WORDS) {
+    const length = tokensMatchPhrase(tokens, start, words);
     if (length > longest) longest = length;
   }
   return longest;
 }
 
 function keywordLengthAt(tokens, start) {
-  for (const words of KEYWORD_PHRASES) {
+  for (const words of ALL_KEYWORD_WORDS) {
     const length = tokensMatchPhrase(tokens, start, words);
     if (length) return length;
   }
@@ -147,8 +196,8 @@ function matchesFuzzily(word, token) {
   return levenshtein(word, token) <= FUZZY_MAX_DISTANCE;
 }
 
-function fuzzyKeywordMatch(tokens, keyword) {
-  const words = keyword.split(/\s+/).filter(Boolean);
+function fuzzyKeywordMatch(tokens, keywordWords) {
+  const words = keywordWords;
   if (!words.length || tokens.length < words.length) return false;
 
   for (let start = 0; start + words.length <= tokens.length; start++) {
@@ -159,39 +208,26 @@ function fuzzyKeywordMatch(tokens, keyword) {
   return false;
 }
 
-function keywordMatches(transcript, keyword) {
-  const escaped = keyword
-    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\s+/g, "\\s+");
-  const tail = PREFIX_KEYWORDS.has(keyword) ? "\\b" : "";
-  return new RegExp(`\\b${escaped}${tail}`).test(transcript);
-}
-
-function keywordsForLocale(keywords, locale) {
-  const primary = keywords[locale] || [];
-  const fallback = locale === "en" ? [] : keywords.en || [];
-  return [...primary, ...fallback];
-}
-
 export function matchCommand(transcript, locale = "en") {
   if (!transcript) return null;
   const normalized = transcript.trim().toLowerCase();
   const tokens = normalized.split(/\s+/).filter(Boolean);
   if (!tokens.length) return null;
-  const stripped = stripNegatedSpans(tokens).join(" ");
+  const strippedTokens = stripNegatedSpans(tokens);
+  if (!strippedTokens.length) return null;
+  const stripped = strippedTokens.join(" ");
 
-  for (const { command, keywords } of COMMAND_MATCHERS) {
-    if (keywordsForLocale(keywords, locale).some((k) => keywordMatches(stripped, k))) {
-      return command;
+  for (const entry of COMPILED_MATCHERS) {
+    const list = compiledForLocale(entry, locale);
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].re.test(stripped)) return entry.command;
     }
   }
 
-  const strippedTokens = stripped.split(/\s+/).filter(Boolean);
-  if (!strippedTokens.length) return null;
-
-  for (const { command, keywords } of COMMAND_MATCHERS) {
-    if (keywordsForLocale(keywords, locale).some((k) => fuzzyKeywordMatch(strippedTokens, k))) {
-      return command;
+  for (const entry of COMPILED_MATCHERS) {
+    const list = compiledForLocale(entry, locale);
+    for (let i = 0; i < list.length; i++) {
+      if (fuzzyKeywordMatch(strippedTokens, list[i].words)) return entry.command;
     }
   }
 

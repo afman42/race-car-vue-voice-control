@@ -74,6 +74,7 @@ const { t } = useI18n();
 
 const trackPath = ref(null);
 const trackLength = ref(0);
+const cachedSegMarkers = ref([]);
 
 onMounted(() => {
   if (
@@ -81,6 +82,9 @@ onMounted(() => {
     typeof trackPath.value.getTotalLength === "function"
   ) {
     trackLength.value = trackPath.value.getTotalLength();
+    // Track layout is static: resolve boundary markers once instead of
+    // calling getPointAtLength() on every tick.
+    cachedSegMarkers.value = computeSegmentMarkers();
   }
 });
 
@@ -100,7 +104,8 @@ const pointAt = (fraction) => {
 const playerMarker = computed(() => pointAt(props.playerLoopPos));
 const rivalMarker = computed(() => pointAt(props.rivalLoopPos));
 
-const segmentBoundaries = computed(() => {
+// Static: layout never changes at runtime, so compute once at setup.
+const segmentBoundaries = (() => {
   let accumulated = 0;
   const boundaries = [];
   for (const seg of CAR_SETTINGS.TRACK_LAYOUT) {
@@ -108,10 +113,17 @@ const segmentBoundaries = computed(() => {
     boundaries.push(accumulated / CAR_SETTINGS.LAP_DISTANCE);
   }
   return boundaries;
-});
+})();
 
 const segmentMarkers = computed(() => {
-  return segmentBoundaries.value.map((frac, i) => {
+  // Use cached DOM-resolved markers once measured; fall back to computing
+  // live (e.g. in tests without layout) so SSR/spec stays correct.
+  if (cachedSegMarkers.value.length) return cachedSegMarkers.value;
+  return computeSegmentMarkers();
+});
+
+const computeSegmentMarkers = () => {
+  return segmentBoundaries.map((frac, i) => {
     const seg = CAR_SETTINGS.TRACK_LAYOUT[i % CAR_SETTINGS.TRACK_LAYOUT.length];
     const isCorner = seg.type === "corner";
     return {
@@ -122,7 +134,7 @@ const segmentMarkers = computed(() => {
       speed: seg.speed || null,
     };
   });
-});
+};
 </script>
 
 <style scoped>

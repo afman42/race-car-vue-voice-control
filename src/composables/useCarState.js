@@ -169,21 +169,39 @@ export function setSimWatcherRegistered(val) {
 }
 
 // Normalize lap progress to [0, LAP_DISTANCE) handling negative/wrapping values.
-const normalizeProgress = (progress) =>
-  ((progress % CAR_SETTINGS.LAP_DISTANCE) + CAR_SETTINGS.LAP_DISTANCE) % CAR_SETTINGS.LAP_DISTANCE;
+const normalizeProgress = (progress) => {
+  // Fast path: common case is already in range (avoids 2x modulo).
+  if (progress >= 0 && progress < CAR_SETTINGS.LAP_DISTANCE) return progress;
+  return (
+    ((progress % CAR_SETTINGS.LAP_DISTANCE) + CAR_SETTINGS.LAP_DISTANCE) %
+    CAR_SETTINGS.LAP_DISTANCE
+  );
+};
+
+// Cumulative segment end boundaries, precomputed once (layout is static).
+// findSegmentAtProgress is called 3-4x per 250ms tick, so avoid re-walking
+// .length property lookups on every call.
+const SEG_ENDS = (() => {
+  const ends = [];
+  let acc = 0;
+  for (const seg of CAR_SETTINGS.TRACK_LAYOUT) {
+    acc += seg.length;
+    ends.push(acc);
+  }
+  return ends;
+})();
 
 // Find which track segment a lap progress value falls within.
 // Handles wrapping so progress > LAP_DISTANCE wraps back to the start.
 export const findSegmentAtProgress = (progress) => {
   const safeProgress = normalizeProgress(progress);
-  let accumulated = 0;
-  for (let i = 0; i < CAR_SETTINGS.TRACK_LAYOUT.length; i++) {
-    accumulated += CAR_SETTINGS.TRACK_LAYOUT[i].length;
-    if (safeProgress < accumulated) {
-      return { index: i, segment: CAR_SETTINGS.TRACK_LAYOUT[i] };
+  const layout = CAR_SETTINGS.TRACK_LAYOUT;
+  for (let i = 0; i < layout.length; i++) {
+    if (safeProgress < SEG_ENDS[i]) {
+      return { index: i, segment: layout[i] };
     }
   }
-  return { index: 0, segment: CAR_SETTINGS.TRACK_LAYOUT[0] };
+  return { index: 0, segment: layout[0] };
 };
 
 // Pace multiplier: how much of the car's potential speed is available

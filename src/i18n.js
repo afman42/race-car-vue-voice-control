@@ -34,8 +34,11 @@ export function t(key, params) {
   if (entry === undefined) return key;
   const text =
     typeof entry === "function" ? entry(params || {}) : entry;
+  // Fast path: most strings have no missing params.
+  if (typeof text !== "string") return String(text);
+  if (text.indexOf("undefined") === -1) return text;
   // Scrub missing interpolation params before they reach the UI.
-  return String(text).replaceAll("undefined", "—");
+  return text.replaceAll("undefined", "—");
 }
 
 export function setLocale(next) {
