@@ -17,11 +17,11 @@ import {
   WEATHER_CONDITIONS,
   DRS_DETECTION,
 } from "@/config";
-import audioService from "@/services/audioService";
 import engineAudioService from "@/services/engineAudioService";
-import ttsService from "@/services/textToSpeechService";
 import { t } from "@/i18n";
+import { voiceSay, voiceSayWithSound } from "@/services/voiceAction";
 import { formatLapTime } from "@/utils/formatLapTime";
+import { thresholdLabel } from "@/utils/numeric";
 import {
   totalProgress,
   loopPosition,
@@ -126,19 +126,28 @@ export function useCar() {
     return "Worn";
   });
 
-  const tempStatus = computed(() => {
-    if (engineTemp.value >= CAR_SETTINGS.TEMP_CRITICAL) return "Critical";
-    if (engineTemp.value > CAR_SETTINGS.TEMP_OPTIMAL_MAX) return "Hot";
-    return "Optimal";
-  });
+  const tempStatus = computed(() =>
+    thresholdLabel(
+      engineTemp.value,
+      [
+        [CAR_SETTINGS.TEMP_CRITICAL, "Critical"],
+        [CAR_SETTINGS.TEMP_OPTIMAL_MAX + 1e-9, "Hot"],
+      ],
+      "Optimal",
+    ),
+  );
 
-  const damageStatus = computed(() => {
-    if (carDamage.value >= CAR_SETTINGS.DAMAGE_CRITICAL_THRESHOLD)
-      return "Critical";
-    if (carDamage.value >= CAR_SETTINGS.DAMAGE_MAJOR_THRESHOLD) return "Major";
-    if (carDamage.value >= CAR_SETTINGS.DAMAGE_MINOR_THRESHOLD) return "Minor";
-    return "None";
-  });
+  const damageStatus = computed(() =>
+    thresholdLabel(
+      carDamage.value,
+      [
+        [CAR_SETTINGS.DAMAGE_CRITICAL_THRESHOLD, "Critical"],
+        [CAR_SETTINGS.DAMAGE_MAJOR_THRESHOLD, "Major"],
+        [CAR_SETTINGS.DAMAGE_MINOR_THRESHOLD, "Minor"],
+      ],
+      "None",
+    ),
+  );
 
   const speedKmh = computed(() => {
     const ratio = normalizedRpmRatio();
@@ -146,17 +155,18 @@ export function useCar() {
       ? (CAR_SETTINGS.GEAR_RATIOS[currentGear.value] || 0.5)
       : 0;
     const grip = tireGripFactor();
+    const eff = effectiveStats.value;
     // Same factor stack as updateLapProgress in useCarSimulation.js:
     // lapProgressBase × (0.3 + ratio×gear) × weather grip × pace × tire grip,
     // then corner cap and DRS boost — so the speedometer tracks real pace.
     const rawSpeed =
-      effectiveStats.value.lapProgressBase *
+      eff.lapProgressBase *
       (0.3 + ratio * gearRatio) *
       weatherConfig().gripFactor *
       paceFactor.value *
       grip;
     const seg = findSegmentAtProgress(lapProgress.value);
-    const cornerFactor = seg.segment.type === "corner" ? effectiveStats.value.cornerSpeedCap * grip : 1.0;
+    const cornerFactor = seg.segment.type === "corner" ? eff.cornerSpeedCap * grip : 1.0;
     const drsBoost = drsStatus.value && seg.segment.type === "straight" ? DRS_DETECTION.DRS_BOOST : 1.0;
     return Math.round(rawSpeed * cornerFactor * drsBoost * CAR_SETTINGS.SPEED_KMH_SCALE);
   });
@@ -193,24 +203,16 @@ export function useCar() {
   } = useQualifying();
 
   // --- HELPERS ---
-  const speakAndReturn = async (key, params) => {
-    const msg = t(key, params);
-    await ttsService.speak(msg);
-    return msg;
-  };
+  const speakAndReturn = (key, params) => voiceSay(key, params);
 
   // --- ACTIONS (PUBLIC METHODS) ---
   const startEngine = async () => {
     if (engineStatus.value) {
-      const message = t("msg.engineAlreadyRunning");
-      await ttsService.speak(message);
-      return message;
+      return voiceSay("msg.engineAlreadyRunning");
     }
 
     if (fuelLevel.value <= 0) {
-      const message = t("msg.tankEmpty");
-      await ttsService.speak(message);
-      return message;
+      return voiceSay("msg.tankEmpty");
     }
 
     engineStatus.value = true;
@@ -220,17 +222,12 @@ export function useCar() {
 
     engineAudioService.start(CAR_SETTINGS.GEAR_START_RPM);
 
-    const message = t("msg.engineStarted");
-    await audioService.playSound("engineStart");
-    await ttsService.speak(message);
-    return message;
+    return voiceSayWithSound("engineStart", "msg.engineStarted");
   };
 
   const stopEngine = async () => {
     if (!engineStatus.value) {
-      const message = t("msg.engineAlreadyOff");
-      await ttsService.speak(message);
-      return message;
+      return voiceSay("msg.engineAlreadyOff");
     }
 
     clearOvertakeTimeout();
@@ -242,10 +239,7 @@ export function useCar() {
 
     engineAudioService.stop();
 
-    const message = t("msg.engineStopped");
-    await audioService.playSound("engineStop");
-    await ttsService.speak(message);
-    return message;
+    return voiceSayWithSound("engineStop", "msg.engineStopped");
   };
 
   const activateDrs = async () => {
@@ -253,15 +247,13 @@ export function useCar() {
     if (drsStatus.value) return speakAndReturn("msg.drsAlreadyActive");
     if (ai.enabled.value && !drsEligible.value) return speakAndReturn("msg.drsNotEligible");
     drsStatus.value = true;
-    await audioService.playSound("drsOn");
-    return speakAndReturn("msg.drsEnabled");
+    return voiceSayWithSound("drsOn", "msg.drsEnabled");
   };
 
   const deactivateDrs = async () => {
     if (!drsStatus.value) return speakAndReturn("msg.drsAlreadyDisabled");
     drsStatus.value = false;
-    await audioService.playSound("drsOff");
-    return speakAndReturn("msg.drsDisabled");
+    return voiceSayWithSound("drsOff", "msg.drsDisabled");
   };
 
   const activateOvertake = async () => {
@@ -278,10 +270,7 @@ export function useCar() {
     // boost never double-counts when the climb already erased it.
     const rpmBeforeBoost = rpm.value;
     rpm.value = Math.min(CAR_SETTINGS.RPM_MAX, rpm.value + CAR_SETTINGS.RPM_OVERTAKE_BOOST);
-    const message = t("msg.overtakeActivated");
-
-    await audioService.playSound("overtakeOn");
-    await ttsService.speak(message);
+    const message = await voiceSayWithSound("overtakeOn", "msg.overtakeActivated");
 
     // Re-check after the awaits: the engine may have stalled/overheated
     // or stopped mid-flight; don't arm a boost timer for a dead engine.
@@ -293,7 +282,7 @@ export function useCar() {
       rpm.value = engineStatus.value
         ? Math.max(CAR_SETTINGS.RPM_IDLE, rpmBeforeBoost)
         : 0;
-      await ttsService.speak(t("msg.overtakeFinished"));
+      await voiceSay("msg.overtakeFinished");
     }, CAR_SETTINGS.OVERTAKE_DURATION_MS);
     setOvertakeTimeout(timeout);
 
@@ -423,9 +412,7 @@ export function useCar() {
       damageWarned.value = false;
 
       await startEngine();
-      const message = t("msg.pitComplete");
-      await ttsService.speak(message);
-      return message;
+      return speakAndReturn("msg.pitComplete");
     } finally {
       pitting.value = false;
     }

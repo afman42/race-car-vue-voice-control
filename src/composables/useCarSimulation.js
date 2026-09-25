@@ -18,8 +18,8 @@ import {
   PIT_WINDOW,
 } from "@/config";
 import engineAudioService from "@/services/engineAudioService";
-import ttsService from "@/services/textToSpeechService";
-import { t } from "@/i18n";
+import { voiceSaySync } from "@/services/voiceAction";
+import { clampRound, roundTemp, insertTopN } from "@/utils/numeric";
 import {
   engineStatus,
   rpm,
@@ -147,9 +147,7 @@ const recordLap = (lapNumber, timeMs) => {
   if (bestLapTime.value === null || time < bestLapTime.value) {
     bestLapTime.value = time;
   }
-  const next = [...leaderboard.value, { lap: lapNumber, time }];
-  next.sort((a, b) => a.time - b.time);
-  leaderboard.value = next.slice(0, CAR_SETTINGS.LEADERBOARD_SIZE);
+  insertTopN(leaderboard.value, { lap: lapNumber, time }, CAR_SETTINGS.LEADERBOARD_SIZE);
 
   // Track qualifying results
   if (raceMode.value === "qualifying") {
@@ -165,20 +163,15 @@ const recordLap = (lapNumber, timeMs) => {
 // Bank the elapsed lap-time delta as sector `sectorIdx` (0-based), updating
 // best/last sector boards. Shared by sector crossings and lap completion.
 const finalizeSector = (sectorIdx) => {
-  const sectorTime =
-    currentLapTime.value -
-    sectorTimes.value.slice(0, sectorIdx).reduce((a, b) => a + b, 0);
-  const times = [...sectorTimes.value];
+  const times = sectorTimes.value;
+  let sum = 0;
+  for (let i = 0; i < sectorIdx; i++) sum += times[i];
+  const sectorTime = currentLapTime.value - sum;
   times[sectorIdx] = sectorTime;
-  sectorTimes.value = times;
   if (bestSectorTimes.value[sectorIdx] === null || sectorTime < bestSectorTimes.value[sectorIdx]) {
-    const best = [...bestSectorTimes.value];
-    best[sectorIdx] = sectorTime;
-    bestSectorTimes.value = best;
+    bestSectorTimes.value[sectorIdx] = sectorTime;
   }
-  const last = [...lastSectorTimes.value];
-  last[sectorIdx] = sectorTime;
-  lastSectorTimes.value = last;
+  lastSectorTimes.value[sectorIdx] = sectorTime;
 };
 
 const updateSectorTiming = () => {
@@ -193,7 +186,8 @@ const updateSectorTiming = () => {
 };
 
 // Shut the car down at session end (checkered flag or qualifying complete).
-const endSession = (message) => {
+// Takes an i18n key + params so all speech funnels through voiceAction.
+const endSession = (key, params) => {
   raceFinished.value = true;
   lapProgress.value = 0;
   engineStatus.value = false;
@@ -203,7 +197,7 @@ const endSession = (message) => {
   overtakeActive.value = false;
   clearOvertakeTimeout();
   engineAudioService.stop();
-  ttsService.speak(message);
+  voiceSaySync(key, params);
 };
 
 // Complete one lap: bank the final sector, record the lap, reset per-lap
@@ -224,16 +218,16 @@ const completeLap = () => {
   drsEligible.value = false;
   // Check for qualifying session end (3 laps completed)
   if (raceMode.value === "qualifying" && qualifyingLapsRemaining.value <= 0) {
-    endSession(t("msg.qualiComplete"));
+    endSession("msg.qualiComplete");
     return true;
   }
 
   if (currentLap.value >= CAR_SETTINGS.TOTAL_LAPS) {
-    endSession(t("msg.checkeredFlag"));
+    endSession("msg.checkeredFlag");
     return true;
   }
   currentLap.value += 1;
-  ttsService.speak(t("msg.lapAnnounce", { lap: currentLap.value }));
+  voiceSaySync("msg.lapAnnounce", { lap: currentLap.value });
   return false;
 };
 
@@ -243,20 +237,25 @@ const updateLapProgress = (ratio) => {
 
   currentLapTime.value += CAR_SETTINGS.LAP_TIME_PER_TICK_MS;
 
+  // Hoist per-tick lookups: one deref each instead of repeated calls.
+  const eff = effectiveStats.value;
+  const wc = weatherConfig();
+  const grip = tireGripFactor();
+  const pace = paceFactor.value;
   const gearRatio = currentGear.value > 0
     ? (CAR_SETTINGS.GEAR_RATIOS[currentGear.value] || 0.5)
     : 0;
   const rawSpeed =
-    effectiveStats.value.lapProgressBase *
+    eff.lapProgressBase *
     (0.3 + ratio * gearRatio) *
-    weatherConfig().gripFactor *
-    paceFactor.value *
-    tireGripFactor();
+    wc.gripFactor *
+    pace *
+    grip;
 
   const startSeg = findSegmentAtProgress(lapProgress.value);
   const startCornerFactor =
     startSeg.segment.type === "corner"
-      ? effectiveStats.value.cornerSpeedCap * tireGripFactor()
+      ? eff.cornerSpeedCap * grip
       : 1.0;
 
   const drsBoost =
@@ -269,7 +268,7 @@ const updateLapProgress = (ratio) => {
   if (endSeg.index !== startSeg.index) {
     const endCornerFactor =
       endSeg.segment.type === "corner"
-        ? effectiveStats.value.cornerSpeedCap
+        ? eff.cornerSpeedCap
         : 1.0;
     lapProgress.value = beforeProgress + rawSpeed * endCornerFactor;
   }
@@ -283,18 +282,18 @@ const updateLapProgress = (ratio) => {
 };
 
 // --- TEMPERATURE ---
-const updateTemperature = (ratio) => {
+const updateTemperature = (ratio, wc) => {
   let next = engineTemp.value;
   const heat = CAR_SETTINGS.TEMP_RISE_RATE * ratio;
   const cool = CAR_SETTINGS.TEMP_COOL_RATE * (1 - ratio);
   next += heat - cool;
   if (overtakeActive.value) next += CAR_SETTINGS.TEMP_OVERTAKE_PENALTY;
-  next += weatherConfig().tempBias;
-  engineTemp.value = Math.round(Math.max(CAR_SETTINGS.TEMP_AMBIENT, next) * 10) / 10;
+  next += (wc || weatherConfig()).tempBias;
+  engineTemp.value = roundTemp(next, CAR_SETTINGS.TEMP_AMBIENT);
 };
 
 // --- TIRE TEMPERATURE ---
-const updateTireTemperature = (ratio) => {
+const updateTireTemperature = (ratio, wc) => {
   let next = tireTemp.value;
   if (engineStatus.value && ratio > 0.1) {
     next += TIRE_TEMP.HEAT_RATE * ratio;
@@ -303,13 +302,12 @@ const updateTireTemperature = (ratio) => {
   }
   if (next > TIRE_TEMP.BASELINE) next -= TIRE_TEMP.AMBIENT_COOL;
   else if (next < TIRE_TEMP.BASELINE) next += TIRE_TEMP.AMBIENT_COOL;
-  next += weatherConfig().tempBias * 0.3;
-  next = Math.max(TIRE_TEMP_MIN, Math.min(TIRE_TEMP_CEILING, next));
-  tireTemp.value = Math.round(next * 10) / 10;
+  next += (wc || weatherConfig()).tempBias * 0.3;
+  tireTemp.value = roundTemp(next, TIRE_TEMP_MIN, TIRE_TEMP_CEILING);
   const critical = tireTemp.value >= TIRE_TEMP.CRITICAL_TEMP;
   if (critical && !tireTempWarned.value) {
     tireTempWarned.value = true;
-    ttsService.speak(t("msg.warnTireTemp"));
+    voiceSaySync("msg.warnTireTemp");
   } else if (!critical) {
     tireTempWarned.value = false;
   }
@@ -353,10 +351,16 @@ const updateDrsEligibility = () => {
 // Fuel consumed per tick at the given RPM ratio. Shared by the tick (actual
 // consumption) and the pit-window projection (estimate) so the forecast
 // always matches the sim.
-const fuelConsumptionPerTick = (ratio) => {
+const FUEL_RATE_BY_MIX = {
+  LEAN: "LEAN",
+  STANDARD: "STANDARD",
+  RICH: "RICH",
+};
+const fuelConsumptionPerTick = (ratio, eff) => {
+  const stats = eff || effectiveStats.value;
+  const mixKey = fuelMix.value.toUpperCase();
   const baseConsumptionRate =
-    effectiveStats.value.fuelRate[fuelMix.value.toUpperCase()] ||
-    effectiveStats.value.fuelRate.STANDARD;
+    stats.fuelRate[FUEL_RATE_BY_MIX[mixKey]] || stats.fuelRate.STANDARD;
   const rpmMultiplier =
     CAR_SETTINGS.RPM_MULTIPLIER_MIN +
     ratio * (CAR_SETTINGS.RPM_MULTIPLIER_MAX - CAR_SETTINGS.RPM_MULTIPLIER_MIN);
@@ -374,11 +378,13 @@ const updatePitWindow = () => {
 
   // Estimate wear per lap from current simulation rates
   const ratio = normalizedRpmRatio();
+  const eff = effectiveStats.value;
+  const wc = weatherConfig();
   const wearPerTick =
-    effectiveStats.value.tireWearRate *
+    eff.tireWearRate *
     (1 + ratio) *
     compoundConfig().wearFactor *
-    weatherConfig().wearFactor;
+    wc.wearFactor;
   const ticksPerLap = CAR_SETTINGS.LAP_DISTANCE / (CAR_SETTINGS.LAP_PROGRESS_BASE * PIT_PROJECTION_PACE_FACTOR);
   const wearPerLap = wearPerTick * ticksPerLap;
   const lapsOfTireLifeRemaining = wearPerLap > 0 ? tireLife.value / wearPerLap : 99;
@@ -403,7 +409,7 @@ const updatePitWindow = () => {
   pitWindowUrgent.value = limitingLaps <= PIT_WINDOW.URGENT_LAPS_REMAINING;
   if (pitWindowUrgent.value && !getPitUrgentWarned()) {
     setPitUrgentWarned(true);
-    ttsService.speak(t("msg.pitWindowUrgent", { lap: pitWindowStart.value }));
+    voiceSaySync("msg.pitWindowUrgent", { lap: pitWindowStart.value });
   }
 };
 
@@ -416,7 +422,7 @@ const checkWeatherShift = () => {
   // Announce weather change FORECAST_LAPS laps in advance (only once)
   if (!weatherChangeAnnounced.value && currentLap.value >= weatherChangeLap.value - WEATHER_SHIFT.FORECAST_LAPS) {
     weatherChangeAnnounced.value = true;
-    ttsService.speak(t("msg.weatherChangeAnnounce", { weather: nextWeather.value }));
+    voiceSaySync("msg.weatherChangeAnnounce", { weather: nextWeather.value });
   }
 
   // Apply weather change
@@ -424,7 +430,7 @@ const checkWeatherShift = () => {
     weather.value = nextWeather.value;
     nextWeather.value = null;
     weatherChangeLap.value = 0;
-    ttsService.speak(t("msg.weatherChanged", { weather: weather.value }));
+    voiceSaySync("msg.weatherChanged", { weather: weather.value });
   }
 };
 
@@ -464,7 +470,7 @@ const updateDamage = () => {
     added += CAR_SETTINGS.DAMAGE_OVERHEAT_RATE * 0.3;
   }
   if (added > 0) {
-    carDamage.value = Math.round(Math.min(100, carDamage.value + added) * 100) / 100;
+    carDamage.value = clampRound(carDamage.value + added, { min: 0, max: 100, dec: 2 });
   }
 };
 
@@ -472,7 +478,7 @@ const checkWarnings = () => {
   const warnOnce = (condition, flag, msgKey) => {
     if (condition && !flag.value) {
       flag.value = true;
-      ttsService.speak(t(msgKey));
+      voiceSaySync(msgKey);
     } else if (!condition) {
       flag.value = false;
     }
@@ -492,7 +498,7 @@ const stallEngine = async () => {
   drsStatus.value = false;
   overtakeActive.value = false;
   engineAudioService.stop();
-  await ttsService.speak(t("msg.stalling"));
+  await voiceSaySync("msg.stalling");
 };
 
 // --- OVERHEAT ---
@@ -503,45 +509,49 @@ const overheatEngine = async () => {
   overtakeActive.value = false;
   rpm.value = CAR_SETTINGS.RPM_IDLE;
   currentGear.value = 0;
-  await ttsService.speak(t("msg.overheatCut"));
+  await voiceSaySync("msg.overheatCut");
 };
 
 // --- MAIN SIMULATION TICK ---
 export const runSimulationTick = () => {
   if (pitting.value) return;
   const ratio = normalizedRpmRatio();
+  // Cache once per tick; reused by fuel/tire/temp/pit-window helpers.
+  const eff = effectiveStats.value;
+  const wc = weatherConfig();
+  const grip = tireGripFactor();
 
   // An engine-off car (player parked while the AI session keeps its interval
   // running) must not burn fuel, wear tires, or accrue damage — same freeze
   // semantics as the pitting guard. Movement and cooling still run below.
   if (engineStatus.value) {
     // Fuel consumption.
-    const totalConsumptionRate = fuelConsumptionPerTick(ratio);
+    const totalConsumptionRate = fuelConsumptionPerTick(ratio, eff);
 
     if (fuelLevel.value > 0) {
-      fuelLevel.value = Math.round(Math.max(0, fuelLevel.value - totalConsumptionRate) * 100) / 100;
+      fuelLevel.value = clampRound(fuelLevel.value - totalConsumptionRate, { min: 0, max: 100, dec: 2 });
     }
 
     // Tire wear (with tire temperature multiplier).
     if (tireLife.value > 0) {
       const wear =
-        effectiveStats.value.tireWearRate *
+        eff.tireWearRate *
         (1 + ratio) *
         compoundConfig().wearFactor *
-        weatherConfig().wearFactor *
+        wc.wearFactor *
         tireWearTempFactor();
-      tireLife.value = Math.round(Math.max(0, tireLife.value - wear) * 100) / 100;
+      tireLife.value = clampRound(tireLife.value - wear, { min: 0, max: 100, dec: 2 });
     }
 
     // Battery recharge.
     if (batteryLevel.value < 100) {
       const recharge =
         CAR_SETTINGS.BATTERY_RECHARGE_RATE * ersConfig().rechargeFactor;
-      batteryLevel.value = Math.round(Math.min(100, batteryLevel.value + recharge) * 100) / 100;
+      batteryLevel.value = clampRound(batteryLevel.value + recharge, { min: 0, max: 100, dec: 2 });
     }
   }
-  updateTemperature(ratio);
-  updateTireTemperature(ratio);
+  updateTemperature(ratio, wc);
+  updateTireTemperature(ratio, wc);
   updateDamage();
   updateLapProgress(ratio);
   checkWeatherShift();
@@ -554,7 +564,7 @@ export const runSimulationTick = () => {
   if (engineStatus.value && !overheating.value) {
     rpm.value = Math.min(
       CAR_SETTINGS.RPM_MAX,
-      rpm.value + effectiveStats.value.gearRpmClimb,
+      rpm.value + eff.gearRpmClimb,
     );
   }
 

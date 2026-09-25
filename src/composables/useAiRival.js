@@ -2,9 +2,9 @@
 
 import { ref, computed } from "vue";
 import { CAR_SETTINGS, AI_DIFFICULTY, QUALIFYING } from "@/config";
-import ttsService from "@/services/textToSpeechService";
-import { t } from "@/i18n";
+import { voiceSay, voiceSaySync } from "@/services/voiceAction";
 import { formatLapTime } from "@/utils/formatLapTime";
+import { insertTopN } from "@/utils/numeric";
 
 // The AI rival is modeled as a lap-time generator, not a full physics car: it
 // has no engine/fuel/tire sim. Each tick it accrues progress toward its next
@@ -52,9 +52,7 @@ const recordLap = (lapNumber, timeMs) => {
   if (bestLapTime.value === null || time < bestLapTime.value) {
     bestLapTime.value = time;
   }
-  const next = [...leaderboard.value, { lap: lapNumber, time }];
-  next.sort((a, b) => a.time - b.time);
-  leaderboard.value = next.slice(0, CAR_SETTINGS.LEADERBOARD_SIZE);
+  insertTopN(leaderboard.value, { lap: lapNumber, time }, CAR_SETTINGS.LEADERBOARD_SIZE);
 };
 
 // Reset race progress while keeping the selected difficulty.
@@ -103,7 +101,7 @@ const tick = () => {
     if (currentLap.value >= CAR_SETTINGS.TOTAL_LAPS) {
       finished.value = true;
       lapProgress.value = 1;
-      ttsService.speak(t("msg.aiFinished"));
+      voiceSaySync("msg.aiFinished");
       return;
     }
     currentLap.value += 1;
@@ -124,9 +122,7 @@ const setDifficulty = async (level) => {
   }
 
   if (!AI_DIFFICULTY[resolvedKey]) {
-    const message = t("msg.unknownDifficulty", { level });
-    await ttsService.speak(message);
-    return message;
+    return voiceSay("msg.unknownDifficulty", { level });
   }
 
   // Reset progress BEFORE enabling so the simulation watcher sees
@@ -139,46 +135,37 @@ const setDifficulty = async (level) => {
   difficulty.value = AI_DIFFICULTY[resolvedKey].label;
   enabled.value = true;
 
-  const message = t("msg.aiEnabled", { label: AI_DIFFICULTY[resolvedKey].label });
-  await ttsService.speak(message);
-  return message;
+  return voiceSay("msg.aiEnabled", { label: AI_DIFFICULTY[resolvedKey].label });
 };
 
 // Turn the rival off and clear its progress.
 const disable = async () => {
   if (!enabled.value) {
-    const message = t("msg.aiAlreadyOff");
-    await ttsService.speak(message);
-    return message;
+    return voiceSay("msg.aiAlreadyOff");
   }
   enabled.value = false;
   resetProgress();
-  const message = t("msg.aiDisabled");
-  await ttsService.speak(message);
-  return message;
+  return voiceSay("msg.aiDisabled");
 };
 
 // Speak and return the rival's current status.
 const getStatus = async () => {
-  let message;
   if (!enabled.value) {
-    message = t("msg.aiOff");
-  } else if (bestLapTime.value === null) {
-    message = t("msg.aiStatusNoLap", {
+    return voiceSay("msg.aiOff");
+  }
+  if (bestLapTime.value === null) {
+    return voiceSay("msg.aiStatusNoLap", {
       difficulty: difficulty.value,
       lap: currentLap.value,
       total: CAR_SETTINGS.TOTAL_LAPS,
-    });
-  } else {
-    message = t("msg.aiStatus", {
-      difficulty: difficulty.value,
-      lap: currentLap.value,
-      total: CAR_SETTINGS.TOTAL_LAPS,
-      best: formatLapTime(bestLapTime.value),
     });
   }
-  await ttsService.speak(message);
-  return message;
+  return voiceSay("msg.aiStatus", {
+    difficulty: difficulty.value,
+    lap: currentLap.value,
+    total: CAR_SETTINGS.TOTAL_LAPS,
+    best: formatLapTime(bestLapTime.value),
+  });
 };
 
 // Enable or disable qualifying mode for the AI rival.

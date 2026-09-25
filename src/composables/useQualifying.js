@@ -22,8 +22,7 @@ import {
 } from "./useCarState";
 import { CAR_SETTINGS, QUALIFYING } from "@/config";
 import engineAudioService from "@/services/engineAudioService";
-import ttsService from "@/services/textToSpeechService";
-import { t } from "@/i18n";
+import { voiceSay } from "@/services/voiceAction";
 import { formatLapTime } from "@/utils/formatLapTime";
 
 export function useQualifying() {
@@ -50,9 +49,7 @@ export function useQualifying() {
   // Start a qualifying session (3-lap shootout).
   const startQualifying = async () => {
     if (engineStatus.value) {
-      const message = t("msg.qualiEngineRunning");
-      await ttsService.speak(message);
-      return message;
+      return voiceSay("msg.qualiEngineRunning");
     }
 
     // Reset all state to defaults before setting qualifying mode.
@@ -72,48 +69,34 @@ export function useQualifying() {
     rpm.value = CAR_SETTINGS.GEAR_START_RPM;
     engineAudioService.start(CAR_SETTINGS.GEAR_START_RPM);
 
-    const message = t("msg.qualiStarted", { laps: QUALIFYING.LAPS });
-    await ttsService.speak(message);
-    return message;
+    return voiceSay("msg.qualiStarted", { laps: QUALIFYING.LAPS });
   };
 
   // Get the current qualifying session status via TTS.
   const getQualifyingStatus = async () => {
     if (raceMode.value !== "qualifying") {
-      const message = t("msg.qualiNotActive");
-      await ttsService.speak(message);
-      return message;
+      return voiceSay("msg.qualiNotActive");
     }
     if (qualifyingBestLap.value === null) {
-      const message = t("msg.qualiStatus", { lapsRemaining: qualifyingLapsRemaining.value });
-      await ttsService.speak(message);
-      return message;
+      return voiceSay("msg.qualiStatus", { lapsRemaining: qualifyingLapsRemaining.value });
     }
-    const message = t("msg.qualiStatusWithTime", {
+    return voiceSay("msg.qualiStatusWithTime", {
       lapsRemaining: qualifyingLapsRemaining.value,
       best: formatLapTime(qualifyingBestLap.value),
     });
-    await ttsService.speak(message);
-    return message;
   };
 
   // Get the player's best qualifying lap time via TTS.
   const getQualifyingBestLap = async () => {
     if (raceMode.value !== "qualifying") {
-      const message = t("msg.qualiNotActive");
-      await ttsService.speak(message);
-      return message;
+      return voiceSay("msg.qualiNotActive");
     }
     if (qualifyingBestLap.value === null) {
-      const msg = t("msg.qualiNoLapYet");
-      await ttsService.speak(msg);
-      return msg;
+      return voiceSay("msg.qualiNoLapYet");
     }
-    const msg = t("msg.qualiBestLap", {
+    return voiceSay("msg.qualiBestLap", {
       time: formatLapTime(qualifyingBestLap.value),
     });
-    await ttsService.speak(msg);
-    return msg;
   };
 
   return {
