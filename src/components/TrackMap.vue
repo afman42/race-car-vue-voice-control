@@ -180,7 +180,7 @@ const segmentMarkers = computed(() => {
   opacity: 0.85;
 }
 .legend-label {
-  fill: #ccc;
+  fill: #e6e6e6;
   font-size: 2.5px;
   font-family: "Orbitron", sans-serif;
 }
@@ -209,5 +209,10 @@ const segmentMarkers = computed(() => {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .track-marker {
+    transition: none;
+  }
 }
 </style>

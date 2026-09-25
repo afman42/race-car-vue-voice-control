@@ -85,7 +85,7 @@ const manualControls = [
   border-top: 1px solid #444;
 }
 .manual-controls h3 {
-  color: #aaa;
+  color: #c9c9c9;
   font-size: 0.9rem;
   text-transform: uppercase;
   text-align: center;
@@ -118,5 +118,9 @@ const manualControls = [
   border-color: #ff851b;
   background-color: rgba(255, 133, 27, 0.15);
   color: #ff851b;
+}
+.ctrl-button:focus-visible {
+  outline: 2px solid #00ffff;
+  outline-offset: 2px;
 }
 </style>

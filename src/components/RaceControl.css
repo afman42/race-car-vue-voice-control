@@ -123,7 +123,7 @@ h1 {
 }
 
 .display-item h2 {
-  color: #aaa;
+  color: #c9c9c9;
   font-size: 0.9rem;
   text-transform: uppercase;
   margin-bottom: 0.5rem;
@@ -143,6 +143,7 @@ h1 {
 }
 
 .countdown-bar {
+  display: block;
   margin-top: 0.5rem;
   width: 100%;
   height: 6px;
@@ -151,6 +152,7 @@ h1 {
   overflow: hidden;
 }
 .countdown-fill {
+  display: block;
   height: 100%;
   background-color: #00ffff;
   border-radius: 3px;
@@ -184,7 +186,7 @@ h1 {
   margin-bottom: 1rem;
 }
 .position-badge .pos-label {
-  color: #aaa;
+  color: #c9c9c9;
   font-size: 0.8rem;
   text-transform: uppercase;
 }
@@ -325,7 +327,7 @@ h1 {
   margin-bottom: 1.5rem;
 }
 .quali-grid-label {
-  color: #aaa;
+  color: #c9c9c9;
   font-size: 0.8rem;
   text-transform: uppercase;
   display: block;
@@ -352,7 +354,7 @@ h1 {
 .quali-grid-row .qg-name {
   font-size: 0.75rem;
   text-transform: uppercase;
-  color: #aaa;
+  color: #c9c9c9;
 }
 .quali-grid-row .qg-time {
   font-family: monospace;
@@ -375,7 +377,7 @@ h1 {
 .ai-sub {
   display: block;
   font-size: 0.7rem;
-  color: #aaa;
+  color: #c9c9c9;
   font-weight: normal;
   margin-top: 0.2rem;
 }
@@ -384,7 +386,7 @@ h1 {
   margin-top: 2rem;
   padding-top: 1rem;
   border-top: 1px solid #444;
-  color: #999;
+  color: #c9c9c9;
 }
 .transcript-log p {
   font-family: monospace;
@@ -424,11 +426,11 @@ h1 {
 }
 
 .drs-zone-indicator {
+  display: inline-block;
   font-size: 0.65rem;
   margin-top: 0.2rem;
   padding: 2px 6px;
   border-radius: 4px;
-  text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 .drs-zone-indicator.eligible {
@@ -436,7 +438,7 @@ h1 {
   background-color: #2ecc40;
 }
 .drs-zone-indicator.ineligible {
-  color: #aaa;
+  color: #c9c9c9;
   background-color: #333;
 }
 
@@ -464,8 +466,16 @@ h1 {
 @media (prefers-reduced-motion: reduce) {
   .quali-badge,
   .pit-window-tile,
-  .pit-window-tile.urgent {
+  .pit-window-tile.urgent,
+  .shift-led.blink,
+  .shift-led.shift,
+  .gear-number,
+  .countdown-fill,
+  .light,
+  .car-select-button,
+  .control-button {
     animation: none;
+    transition: none;
   }
 }
 
@@ -476,4 +486,9 @@ h1 {
 .control-button:disabled {
   background-color: #555;
   cursor: not-allowed;
+}
+
+:is(.control-button, .car-select-button, .lang-select select):focus-visible {
+  outline: 2px solid #00ffff;
+  outline-offset: 2px;
 }

@@ -90,7 +90,7 @@ const rpmNeedleOffset = computed(() => {
   font-weight: bold;
 }
 .rpm-label {
-  fill: #888;
+  fill: #c9c9c9;
   font-size: 8px;
 }
 @media (min-width: 768px) {
@@ -101,6 +101,11 @@ const rpmNeedleOffset = computed(() => {
 @media (min-width: 1024px) {
   .rpm-gauge {
     width: 300px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gauge-needle {
+    transition: none;
   }
 }
 </style>
